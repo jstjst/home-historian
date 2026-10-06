@@ -1,0 +1,11 @@
+# Loads every dashboard JSON from the mounted directory.
+apiVersion: 1
+
+providers:
+  - name: home-historian
+    type: file
+    updateIntervalSeconds: 30       # picks up changes to the JSON files
+    allowUiUpdates: true            # editable in the UI (until the next reload)
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

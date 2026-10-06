@@ -1,0 +1,238 @@
+# home-historian
+#
+# Core (always running):   mosquitto -> ingest
+# Storage + dashboards:    timescaledb, grafana          profile "db"
+# Modules (data sources):  open3e, open3e-sim, vicare    one profile each
+# Tools:                   mqtt-explorer, pgadmin        profile "tools"
+#
+# COMPOSE_PROFILES in .env decides what runs (template: .env.example), e.g.
+#   COMPOSE_PROFILES=db,open3e,open3e-sim,tools
+#
+# Database on another host (for instance to spare the SD card of a Raspberry
+# Pi): leave out the "db" profile and set INGEST_DATABASE_URL. If the link to
+# it drops, the broker buffers (see docs/architecture.md).
+
+# Log limit for every service: without it the json log grows without bound.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ===================================================================
+  # Core
+  # ===================================================================
+
+  # MQTT broker with the message-timestamp plugin (see mosquitto/Dockerfile).
+  # By default its ports are reachable from this machine only, because the
+  # broker runs without authentication. BIND_ADDRESS=0.0.0.0 opens it (and
+  # every web UI) to the LAN - set up a user and password in mosquitto.conf
+  # first.
+  mosquitto:
+    build: ./mosquitto
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:1883:1883"
+      - "${BIND_ADDRESS:-127.0.0.1}:9001:9001"
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+    restart: unless-stopped
+    logging: *logging
+
+  # Ingester: subscribes to MQTT and writes to TimescaleDB.
+  #   No depends_on for the database: if it is not reachable (yet), the
+  #   ingester waits on its own and only then connects to the broker.
+  ingest:
+    build: ./ingest
+    environment:
+      # Default = the database of the "db" profile. For a database on another
+      # host, override in .env:  postgresql://user:password@host:5432/dbname
+      INGEST_DATABASE_URL: ${INGEST_DATABASE_URL:-postgresql://${POSTGRES_USER:-historian}:${POSTGRES_PASSWORD:-}@timescaledb:5432/${POSTGRES_DB:-historian}}
+      INGEST_MQTT_HOST: mosquitto
+      INGEST_MQTT_USERNAME: ${MQTT_USERNAME:-}
+      INGEST_MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      INGEST_MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-historian}
+      INGEST_MQTT_TOPIC_FILTER: ${MQTT_TOPIC_PREFIX:-historian}/#
+      # Keep stable: it anchors the persistent session at the broker.
+      INGEST_MQTT_CLIENT_ID: ${INGEST_MQTT_CLIENT_ID:-home-historian-ingest}
+      # How long the broker buffers for the ingester (7 days). Longer outages
+      # of the database lose data.
+      INGEST_MQTT_SESSION_EXPIRY_SECONDS: ${INGEST_MQTT_SESSION_EXPIRY_SECONDS:-604800}
+      # How long (type, native_key) -> metric_id stays cached. A changed
+      # value_type takes effect after that at the latest, or at once with
+      # `docker compose restart ingest`.
+      INGEST_METRIC_CACHE_SECONDS: ${INGEST_METRIC_CACHE_SECONDS:-3600}
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # ===================================================================
+  # Storage + dashboards (profile "db")
+  # ===================================================================
+
+  # TimescaleDB: PostgreSQL with the TimescaleDB extension.
+  #   The files under docker-entrypoint-initdb.d run ONLY on the first start
+  #   (empty volume), in name order: schema, module master data, read-only
+  #   role. Apply later changes by hand (see README).
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    profiles: ["db"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-historian}
+      POSTGRES_USER: ${POSTGRES_USER:-historian}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is not set (copy .env.example to .env)}
+      # Password of the read-only role "grafana" (db/initdb/90_grafana_role.sh).
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?GRAFANA_DB_PASSWORD is not set (copy .env.example to .env)}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:5432:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./db/initdb/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./modules/open3e/seed.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
+      - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    logging: *logging
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    profiles: ["db"]
+    environment:
+      # Expanded via ${...} in the provisioning YAML. Grafana reads through
+      # the read-only role "grafana", not as the owner of the database.
+      POSTGRES_DB: ${POSTGRES_DB:-historian}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD:?GRAFANA_DB_PASSWORD is not set (copy .env.example to .env)}
+      # Only applies on the very first start (empty volume grafana_data).
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is not set (copy .env.example to .env)}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *logging
+
+  # ===================================================================
+  # Modules: one service per data source, each with its own profile
+  # (modules/<name>/). The contract of a module: docs/modules.md
+  # ===================================================================
+
+  # open3e: reads data points (DIDs) from Viessmann E3 devices over CAN.
+  #   Host network, because the CAN interface is a kernel interface of the
+  #   host; it therefore reaches the broker through its locally published port.
+  open3e:
+    build: ./modules/open3e
+    profiles: ["open3e"]
+    network_mode: host
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./modules/open3e/config:/config:ro
+    # {device}/... : the control unit becomes a topic segment of its own and
+    # with it a device of its own (device_key "open3e/<device>").
+    command: >
+      open3e -c ${OPEN3E_CAN_INTERFACE:-vcan0} -cnfg /config/devices.json
+      -r ${OPEN3E_DIDS:-vitocal.268,vitocal.396,vitocharge.1603}
+      -mfstr "{device}/{didNumber}_{didName}"
+      -m localhost:1883:${MQTT_TOPIC_PREFIX:-historian}/open3e
+      -t ${OPEN3E_INTERVAL_SECONDS:-5}
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # open3e-sim: virtualE3 simulates two E3 devices (Vitocal 0x680, Vitocharge
+  #   0x6a1) on the virtual CAN bus vcan0, to try things out without hardware.
+  #   vcan0 has to exist: modules/open3e/sim/setup-vcan.sh
+  open3e-sim:
+    image: ghcr.io/lgraf/vituale3:sha-9bfe61b
+    profiles: ["open3e-sim"]
+    network_mode: host
+    command: ["-c", "vcan0", "-cnfg", "/devices.json"]
+    volumes:
+      - ./modules/open3e/sim/devices.json:/devices.json:ro
+      - ./modules/open3e/sim/Open3Edatapoints_680.py:/Open3Edatapoints_680.py:ro
+      - ./modules/open3e/sim/Open3Edatapoints_6a1.py:/Open3Edatapoints_6a1.py:ro
+      - ./modules/open3e/sim/virtdata_680.txt:/virtdata_680.txt:ro
+      - ./modules/open3e/sim/virtdata_6a1.txt:/virtdata_6a1.txt:ro
+    restart: unless-stopped
+    logging: *logging
+
+  # vicare: polls the Viessmann ViCare cloud API.
+  vicare:
+    build: ./modules/vicare
+    profiles: ["vicare"]
+    environment:
+      VICARE_CLIENT_ID: ${VICARE_CLIENT_ID:-}
+      VICARE_EMAIL: ${VICARE_EMAIL:-}
+      VICARE_PASSWORD: ${VICARE_PASSWORD:-}
+      # Which device to publish (device type). heating = heat pump.
+      VICARE_DEVICE_TYPE: ${VICARE_DEVICE_TYPE:-heating}
+      # PyViCare keeps the OAuth session here. MUST be on the volume: inside
+      # the image it would be gone after every restart -> needless re-login.
+      VICARE_TOKEN_FILE: /data/token.pickle
+      VICARE_HEARTBEAT_FILE: /data/heartbeat
+      VICARE_MQTT_HOST: mosquitto
+      VICARE_MQTT_USERNAME: ${MQTT_USERNAME:-}
+      VICARE_MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      VICARE_MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-historian}/vicare
+      # 300 s = 288 requests a day. The ViCare API quota is tight; do not go
+      # lower without a reason (minimum enforced in code: 60).
+      VICARE_POLL_INTERVAL_SECONDS: ${VICARE_POLL_INTERVAL_SECONDS:-300}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - vicare-token:/data
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # ===================================================================
+  # Tools (profile "tools") - neither has a login of its own, which is why
+  # they are only reachable through BIND_ADDRESS (default 127.0.0.1).
+  # ===================================================================
+
+  # Web MQTT explorer: http://localhost:4000, broker host there: "mosquitto".
+  mqtt-explorer:
+    image: smeagolworms4/mqtt-explorer:master
+    profiles: ["tools"]
+    environment:
+      - HTTP_PORT=4000
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:4000:4000"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # pgAdmin in desktop mode (no login): http://localhost:5050
+  pgadmin:
+    image: dpage/pgadmin4:9.8
+    profiles: ["tools"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: unused-in-desktop-mode
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:5050:80"
+    restart: unless-stopped
+    logging: *logging
+
+volumes:
+  timescale_data:
+  grafana_data:
+  mosquitto_data:
+  vicare-token:

@@ -1,0 +1,23 @@
+# The data source is created automatically when Grafana starts.
+apiVersion: 1
+
+datasources:
+  - name: TimescaleDB
+    type: postgres
+    uid: timescaledb                # stable: dashboards refer to this uid
+    access: proxy
+    url: timescaledb:5432           # service name inside the compose network
+    user: grafana                   # read-only role (db/initdb/90_grafana_role.sh)
+    database: ${POSTGRES_DB}
+    isDefault: true
+    editable: false                 # provisioned: changes belong in this file
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
+    jsonData:
+      # Grafana's UI reads the default database from here; without it panels
+      # can fail with "You do not currently have a default database
+      # configured". The top-level "database" above stays for older versions.
+      database: ${POSTGRES_DB}
+      sslmode: disable              # internal Docker network only
+      postgresVersion: 1600         # PostgreSQL 16
+      timescaledb: true             # enables the Timescale macros ($__timeGroup uses time_bucket)

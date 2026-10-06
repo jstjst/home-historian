@@ -1,0 +1,6 @@
+paho-mqtt==2.1.0
+pydantic-settings==2.14.2
+# Pulls in requests, authlib, deprecated and simplejson as transitive
+# dependencies. 2.61.0 supports initWithCredentials (e-mail/password) and the
+# device type 'electricityStorage'.
+PyViCare==2.61.0

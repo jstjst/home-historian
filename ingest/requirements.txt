@@ -1,0 +1,17 @@
+# MQTT client (MQTT 5: user properties and persistent sessions)
+paho-mqtt==2.1.0
+
+# PostgreSQL driver with connection pool (psycopg 3)
+psycopg[binary,pool]==3.2.3
+
+# Longest-prefix match on device_key
+pygtrie==2.5.0
+
+# TTL cache for metric resolution
+cachetools==5.5.0
+
+# Lenient ISO 8601 parsing of the timestamp property
+python-dateutil==2.9.0.post0
+
+# Configuration from environment variables / .env
+pydantic-settings==2.6.1

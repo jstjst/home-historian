@@ -1,0 +1,281 @@
+{
+  "uid": "overview",
+  "title": "home-historian - Overview",
+  "tags": [
+    "home-historian"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "category",
+        "label": "Category",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "timescaledb"
+        },
+        "query": "SELECT DISTINCT category::text FROM v_measurements WHERE category IS NOT NULL ORDER BY 1",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": false,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Measurements in total",
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Rows\" FROM measurements;"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Latest measurement",
+      "description": "time comes from the MQTT 5 timestamp property (set by the module or by the broker on receipt), never from the ingester's clock.",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 4,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT max(time) AS \"Latest\" FROM measurements;"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Metrics (curated / total)",
+      "description": "Stubs are metrics the ingester created on its own and nobody has curated yet (display_name = native_key).",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 9,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FILTER (WHERE display_name <> native_key) AS \"curated\", count(*) AS \"total\" FROM metrics;"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Stubs (need curating)",
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Stubs\" FROM metrics WHERE display_name = native_key;"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Measurements by category ($category)",
+      "description": "Uses the merged category: finds metrics whose category comes from the metric (heat pump) AND those where it comes from the device (a meter in one circuit).",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS \"time\", display_name || coalesce(' ' || display_subname, '') AS metric, avg(value_num) AS value FROM v_measurements WHERE $__timeFilter(time) AND value_num IS NOT NULL AND ('$category' = 'All' OR category::text = '$category') GROUP BY 1, 2 ORDER BY 1;"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Min/max band: HC1 flow temperature",
+      "description": "Uses display_subname (the unified role of a value), not the raw native_key, so the same query works for any device.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS \"time\", avg(value_num) FILTER (WHERE display_subname = 'actual') AS \"Actual\", min(value_num) FILTER (WHERE display_subname = 'min') AS \"Minimum\", max(value_num) FILTER (WHERE display_subname = 'max') AS \"Maximum\" FROM v_measurements WHERE $__timeFilter(time) AND display_name = 'HC1 flow temperature' GROUP BY 1 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Stubs: new metrics that need curating",
+      "description": "The ingester creates unknown native_keys as stubs (value_type = 'str'). This lists what is still waiting for a name, unit and category.",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT metric_id, type::text AS type, native_key, value_type::text AS value_type FROM metrics WHERE display_name = native_key ORDER BY metric_id;"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Last received (per metric)",
+      "description": "Diagnosis: which topics are delivering right now? An empty table means nothing arrives (e.g. a device missing from the devices table).",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT device_name AS device, display_name AS metric, display_subname AS role, category::text AS category, unit, max(time) AS latest, count(*) AS count FROM v_measurements WHERE $__timeFilter(time) GROUP BY 1,2,3,4,5 ORDER BY latest DESC;"
+        }
+      ]
+    }
+  ]
+}

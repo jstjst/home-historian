@@ -1,0 +1,12 @@
+{
+  "vitocal": {
+    "tx": "0x680",
+    "dpList": "",
+    "prop": "HPMUMASTER"
+  },
+  "vitocharge": {
+    "tx": "0x6a1",
+    "dpList": "",
+    "prop": "EMCUMASTER"
+  }
+}
