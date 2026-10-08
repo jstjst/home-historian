@@ -63,6 +63,8 @@ services:
       # value_type takes effect after that at the latest, or at once with
       # `docker compose restart ingest`.
       INGEST_METRIC_CACHE_SECONDS: ${INGEST_METRIC_CACHE_SECONDS:-3600}
+      # For the log lines only. Measurement times come from the messages.
+      TZ: ${TZ:-Europe/Berlin}
     depends_on:
       - mosquitto
     restart: unless-stopped
