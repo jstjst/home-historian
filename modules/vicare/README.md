@@ -60,5 +60,9 @@ The ingester reads the list of devices at startup, so follow up with
   volume `vicare-token`. The module deletes an unreadable token file (left
   behind by an interrupted write, say) before logging in, because PyViCare
   would otherwise fail on it for good.
+- **Network outages** cost one warning line per pass; the next pass tries
+  again. A pass that hangs for more than five minutes ends the process and the
+  restart policy starts it afresh: PyViCare sends the login and the token
+  renewal without a timeout, so a silent peer would otherwise block for good.
 - **Healthcheck** ([healthcheck.py](healthcheck.py)): the service only counts
   as healthy if a complete pass succeeded recently and the broker was connected.

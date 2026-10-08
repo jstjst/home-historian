@@ -144,6 +144,10 @@ does the analysis. Observe and analyse, never control.
   check includes the value.
 - **PyViCare fails permanently on an empty token file** (`EOFError` is not
   caught). The vicare module deletes unreadable token files before logging in.
+- **PyViCare sends the login and the token renewal without a timeout** (the
+  fetch has 31 s; still so in 2.63.0). A peer that accepts the connection and
+  stays silent blocks the pass for good, and Docker does not restart an
+  unhealthy container. The vicare module therefore exits on a hung pass.
 - **Grafana + `includeAll` quotes values twice** → `LIKE '${category:csv}'`
   instead of `LIKE '$category'`.
 - **Grouping by `display_name` alone** collapses actual/min/max/average into

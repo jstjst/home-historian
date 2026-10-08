@@ -27,7 +27,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import pickle
+import re
 import signal
 import sys
 import threading
@@ -45,9 +47,18 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from PyViCare.PyViCare import PyViCare
-from PyViCare.PyViCareUtils import PyViCareRateLimitError
+from PyViCare.PyViCareUtils import (
+    PyViCareDeviceCommunicationError,
+    PyViCareInternalServerError,
+    PyViCareRateLimitError,
+)
 
 logger = logging.getLogger("vicare_publisher")
+
+# A pass that is still running after this long is stuck, not slow: a healthy
+# one takes seconds, and one that fails on a dead network gives up after two
+# to three minutes at the latest.
+PASS_TIMEOUT_SECONDS = 300
 
 
 class Settings(BaseSettings):
@@ -408,6 +419,21 @@ def run_once(
     return count
 
 
+def abort_hung_pass() -> None:
+    """Watchdog: end the process so that the restart policy starts it afresh.
+
+    PyViCare sends the login and the token renewal without a timeout. If the
+    other side accepts the connection and then stays silent, the main thread
+    waits in that read for good. os._exit, because sys.exit in the timer
+    thread would only end that thread.
+    """
+    logger.critical(
+        "Pass still running after %d s -- exiting so the container restarts",
+        PASS_TIMEOUT_SECONDS,
+    )
+    os._exit(1)
+
+
 def main() -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -448,6 +474,9 @@ def main() -> int:
         while not stop.is_set():
             started_at = time.monotonic()
             wait_seconds = float(settings.poll_interval_seconds)
+            watchdog = threading.Timer(PASS_TIMEOUT_SECONDS, abort_hung_pass)
+            watchdog.daemon = True
+            watchdog.start()
             try:
                 run_once(client, publisher, settings, seen_timestamps)
             except PyViCareRateLimitError as error:
@@ -459,8 +488,24 @@ def main() -> int:
                 until_reset = (reset_at - datetime.now(timezone.utc)).total_seconds()
                 wait_seconds = max(wait_seconds, until_reset + 5)
                 logger.warning("waiting %.0f s for the quota to reset", wait_seconds)
+            except (PyViCareInternalServerError, PyViCareDeviceCommunicationError) as error:
+                # The cloud, the way to it or the gateway is down. PyViCare
+                # wraps every network error of a fetch in the first one
+                # (status code 0). Expected, so one line and no traceback.
+                logger.warning("Pass failed (%s) -- trying again next time", error.message)
+            except OSError as error:
+                # Login and token renewal are NOT wrapped by PyViCare: their
+                # network errors arrive as plain requests exceptions, which
+                # are OSErrors. Their text quotes the login URL; the query
+                # string is cut because it carries the client id.
+                logger.warning(
+                    "Pass failed (%s) -- trying again next time",
+                    re.sub(r"\?\S+", "", str(error)),
+                )
             except Exception:
                 logger.exception("Pass failed -- trying again next time")
+            finally:
+                watchdog.cancel()
 
             # Shorten the wait by the duration of the pass to keep a steady cadence.
             stop.wait(max(0.0, wait_seconds - (time.monotonic() - started_at)))
