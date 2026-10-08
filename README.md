@@ -79,6 +79,7 @@ modules/
 docs/
   architecture.md      decisions and their reasons, data model
   modules.md           the contract for writing your own module
+  clear-data.md        discard measurements and uncurated metrics
 ```
 
 The **core** is the broker and the ingester; neither knows anything about a
@@ -112,7 +113,8 @@ start.
 **The schema is only applied to an empty volume.** The files under
 `db/initdb/` run once, when the database starts for the first time. Later
 changes are applied by hand, or you discard volume and measurements with
-`docker compose down -v`.
+`docker compose down -v`. To discard only the measurements and the uncurated
+metrics, see [docs/clear-data.md](docs/clear-data.md).
 
 ## Security
 
