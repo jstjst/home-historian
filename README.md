@@ -58,7 +58,7 @@ After about a minute:
 
 | What | Where |
 |---|---|
-| Grafana, dashboard "home-historian - Overview" | <http://localhost:3000> (login from `.env`) |
+| Grafana, dashboards "home-historian - Overview" and "- Stubs" | <http://localhost:3000> (login from `.env`) |
 | MQTT explorer (broker host there: `mosquitto`) | <http://localhost:4000> |
 | pgAdmin | <http://localhost:5050> |
 
@@ -72,7 +72,8 @@ compose.yml            one stack; profiles in .env decide what runs
 mosquitto/             MQTT broker with the timestamp plugin
 ingest/                MQTT -> database
 db/initdb/             schema and read-only role
-grafana/               data source and dashboard (provisioned)
+db/backfill_value_types.sql  move stored values after typing a metric
+grafana/               data source and dashboards (provisioned)
 modules/
   open3e/              Viessmann E3 devices over CAN (+ simulator in sim/)
   vicare/              Viessmann ViCare cloud API
@@ -136,7 +137,9 @@ metrics, see [docs/clear-data.md](docs/clear-data.md).
   exactly that moment. Details in [docs/architecture.md](docs/architecture.md).
 - **Raw data grows without limit.** Neither retention nor compression is set up.
 - **Curating metrics is manual work.** Unknown quantities are stored, but they
-  only get a name, unit and category through an entry in `metrics`.
+  only get a name, unit and category through an entry in `metrics`. The
+  dashboard "home-historian - Stubs" lists what is waiting. A metric typed
+  `num` or `bool` afterwards also needs `db/backfill_value_types.sql`.
 - Device types and categories are enums in the schema and so far cover the
   installations this project grew out of.
 

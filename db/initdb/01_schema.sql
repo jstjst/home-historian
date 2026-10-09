@@ -140,7 +140,8 @@ COMMENT ON TABLE measurements IS 'Time series. metric_id -> metrics, device_id -
 --   After changing value_type the ingester keeps writing to the old column
 --   until its metric cache expires (INGEST_METRIC_CACHE_SECONDS, one hour by
 --   default); `docker compose restart ingest` applies it at once. Values
---   already stored stay where they are until moved with an UPDATE.
+--   already stored stay where they are until db/backfill_value_types.sql
+--   moves them.
 -- =====================================================================
 
 

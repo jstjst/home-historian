@@ -1,0 +1,151 @@
+{
+  "uid": "stubs",
+  "title": "home-historian - Stubs",
+  "tags": [
+    "home-historian"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "home-historian",
+      "tags": [
+        "home-historian"
+      ],
+      "asDropdown": false,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "stub",
+        "label": "Stub",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "timescaledb"
+        },
+        "query": "SELECT type::text || ' / ' || native_key AS __text, metric_id AS __value FROM metrics WHERE display_name = native_key ORDER BY 1",
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Stubs: metrics that still need a name, unit, category and type",
+      "description": "One row per stub and device, with what arrived in the selected time range. A stub without values in that range has empty columns. looks_like is a hint from those values only (num: every value parses as a number; bool: only true/false, on/off, yes/no). Click a native_key to see its values below.",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT met.metric_id, met.type::text AS type, met.native_key, s.device, s.value_count AS \"values\", s.distinct_values AS \"distinct\", s.looks_like, s.latest, s.latest_value FROM metrics met LEFT JOIN (SELECT m.metric_id, d.name AS device, count(*) AS value_count, count(DISTINCT v.value) AS distinct_values, CASE WHEN bool_and(pg_input_is_valid(v.value, 'double precision')) THEN 'num' WHEN bool_and(lower(v.value) IN ('true', 'false', 'on', 'off', 'yes', 'no')) THEN 'bool' ELSE 'str' END AS looks_like, max(m.time) AS latest, last(v.value, m.time) AS latest_value FROM measurements m JOIN devices d USING (device_id) CROSS JOIN LATERAL (SELECT coalesce(m.value_str, m.value_num::text, m.value_bool::text) AS value) v WHERE $__timeFilter(m.time) AND m.metric_id IN (SELECT metric_id FROM metrics WHERE display_name = native_key) GROUP BY m.metric_id, d.name) s USING (metric_id) WHERE met.display_name = met.native_key ORDER BY met.type, met.native_key, s.device;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "native_key"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show the values of this stub",
+                    "url": "/d/stubs?var-stub=${__data.fields.metric_id}&${__url_time_range}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Values over time: $stub",
+      "description": "Only values that parse as a number. A stub stores everything as text, so this casts on the fly; it stays empty for a text-valued stub.",
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroup(m.time, $__interval) AS \"time\", d.name AS metric, avg(coalesce(m.value_num, m.value_str::double precision)) AS value FROM measurements m JOIN devices d USING (device_id) WHERE $__timeFilter(m.time) AND m.metric_id = nullif('$stub', '')::integer AND (m.value_num IS NOT NULL OR pg_input_is_valid(m.value_str, 'double precision')) GROUP BY 1, 2 ORDER BY 1;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "showPoints": "always",
+            "pointSize": 3
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Distinct values: $stub",
+      "description": "The 200 most frequent values in the selected time range.",
+      "gridPos": {
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 12
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT coalesce(m.value_str, m.value_num::text, m.value_bool::text) AS value, count(*) AS count, min(m.time) AS first_seen, max(m.time) AS last_seen FROM measurements m WHERE $__timeFilter(m.time) AND m.metric_id = nullif('$stub', '')::integer GROUP BY 1 ORDER BY count DESC, value LIMIT 200;"
+        }
+      ]
+    }
+  ]
+}

@@ -83,6 +83,10 @@ repeats with the DUP flag. The ingester writes exactly those messages with
 path stays free of checks, and the table free of a unique constraint. The
 comparison includes the value, because broker time only resolves to a second.
 
+That check covers the transport only. A measurement that a module publishes
+twice, in two separate messages, is written twice. Avoiding that is the
+module's job (see [modules.md](modules.md)).
+
 **Why not QoS 2?** In MQTT, "exactly once" covers the hand-over to the client,
 not "is in the database". The client would have to persist its QoS 2 state
 together with the commit; the library used here (paho-mqtt) keeps it in memory
@@ -282,9 +286,15 @@ data points loses nothing.
   them at query time.
 - A changed `value_type` only applies **to new values**: once the metric cache
   expires (one hour), or immediately after `docker compose restart ingest`.
-  Values already stored stay in their column until moved with an `UPDATE`.
+  Values already stored stay in their column. A stub's numbers therefore sit
+  in `value_str` as text and are missing from both aggregates until
+  [db/backfill_value_types.sql](../db/backfill_value_types.sql) moves them. The
+  script finds the affected metrics itself and refreshes the aggregates over
+  their whole history, which the refresh policies (3 and 7 days) would not.
 
-Which metrics are still stubs:
+Which metrics are still stubs, with their latest value, a chart and the list
+of values they reported: the Grafana dashboard "home-historian - Stubs". Or in
+SQL:
 
 ```sql
 SELECT metric_id, type, native_key FROM metrics WHERE display_name = native_key;

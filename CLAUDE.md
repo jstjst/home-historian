@@ -102,10 +102,13 @@ does the analysis. Observe and analyse, never control.
 - **`category` comes from the metric OR the device, via COALESCE.** Data
   points specific to one circuit carry it in `metrics`. Shared meter registers
   do not know their circuit, so it sits on the `device`. Do not unify the two.
-- **Values always go to the column matching their type** (number →
-  `value_num`, otherwise → `value_str`), whatever `value_type` says in
-  `metrics`. The type there is a hint, not a hard rule, so a single type
-  anomaly never loses data.
+- **`value_type` picks the column; a value that does not fit falls back to
+  `value_str`**, so a single type anomaly never loses data. A stub is typed
+  `str`: its values are stored as text even when they are numbers, and no
+  type is guessed (`00000000` parses as a number and is not one). Typing a
+  metric `num` or `bool` afterwards needs `db/backfill_value_types.sql` for
+  the values already stored; it also refreshes the aggregates, whose policies
+  only look back 3 and 7 days.
 - **Unknown quantities** are created by the ingester as text-typed stubs
   (`display_name = native_key`, `category = NULL`, `value_type = 'str'`).
   Curating them is manual; existing values pick up name and category
