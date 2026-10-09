@@ -467,7 +467,9 @@ def main() -> int:
             stop.wait(5)
 
     # In memory only: a restart deliberately publishes everything again. That
-    # doubles as the safety net should the database ever be rebuilt.
+    # doubles as the safety net should the database ever be rebuilt. The
+    # price: features unchanged since the last pass are stored a second time,
+    # because the ingester only checks what the broker redelivers.
     seen_timestamps: dict[str, str] = {}
 
     try:

@@ -56,6 +56,13 @@ The ingester reads the list of devices at startup, so follow up with
   timestamp it sent last. The comparison is per feature rather than against a
   shared watermark: the cloud updates features independently of each other,
   and a watermark would discard values that arrive late.
+- **A restart sends everything once more.** The remembered timestamps are
+  kept in memory only, on purpose: the first pass after a restart publishes
+  every feature again, which also refills a database that had to be rebuilt.
+  The price is duplicates. The ingester does not filter these messages (it
+  only checks what the broker redelivers), so every feature that has not
+  changed since the last pass before the restart is stored a second time,
+  with the same time and value.
 - **Login and token** are handled by PyViCare; the session is stored on the
   volume `vicare-token`. The module deletes an unreadable token file (left
   behind by an interrupted write, say) before logging in, because PyViCare

@@ -62,8 +62,11 @@ competing source of truth.
 - **Not retained.** An old value delivered again on subscribing would be a
   duplicate in the time series.
 - **Only send what changed or was newly measured.** Repeating the same value
-  with the same time of measurement produces duplicate rows. The vicare module
-  remembers the last timestamp it sent per quantity for this reason.
+  with the same time of measurement produces duplicate rows: the ingester
+  only checks messages the broker redelivers, not what a module sends twice.
+  The vicare module remembers the last timestamp it sent per quantity for this
+  reason. It keeps that in memory, so its restart repeats unchanged values
+  once (see its [README](../modules/vicare/README.md)).
 
 ### Master data
 

@@ -151,6 +151,10 @@ does the analysis. Observe and analyse, never control.
   fetch has 31 s; still so in 2.63.0). A peer that accepts the connection and
   stays silent blocks the pass for good, and Docker does not restart an
   unhealthy container. The vicare module therefore exits on a hung pass.
+- **A restart of the vicare module duplicates unchanged values.** Its
+  per-feature timestamps are in memory on purpose (the first pass refills a
+  rebuilt database). The ingester only checks DUP redeliveries, so every
+  feature unchanged since the last pass is stored a second time.
 - **Grafana + `includeAll` quotes values twice** → `LIKE '${category:csv}'`
   instead of `LIKE '$category'`.
 - **Grouping by `display_name` alone** collapses actual/min/max/average into
