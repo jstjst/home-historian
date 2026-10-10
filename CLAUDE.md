@@ -183,6 +183,16 @@ does the analysis. Observe and analyse, never control.
 - **`vcan` needs Linux and `linux-modules-extra`** (not preinstalled in slim
   cloud images, and needed again after a kernel update). The simulator only
   runs with the `vcan` module loaded.
+- **open3e does not set the CAN bit rate** (python-can's SocketCAN backend
+  ignores `bitrate`). The host configures the interface, 250 kbit/s:
+  `modules/open3e/setup-can.sh` or systemd-networkd.
+- **A CAN link under systemd-networkd never counts as online** (checked with
+  `vcan`); its `.network` file needs `RequiredForOnline=no`, or
+  `network-online.target` (Docker waits for it) hangs until the timeout.
+- **open3e resolves `dpList` from its working directory**, not from where
+  `devices.json` lies → `/config/Open3Edatapoints_<address>.py`.
+- **`docker compose run -v` does not replace a mount the service already has
+  at the same path**; the service's (read-only) one stays.
 - **Reloading a dashboard with an unchanged `version` is unreliable** → after
   editing the JSON, `docker compose restart grafana`.
 - **Schema init ONLY runs on an empty volume** → apply schema changes by hand,

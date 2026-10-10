@@ -53,15 +53,169 @@ Data points with simulation data:
 
 The simulation data comes from open3e's integration test (Apache-2.0).
 
-## Real hardware
+## Commissioning
 
-1. Connect the CAN adapter and bring the interface up:
-   `sudo ip link set can0 up type can bitrate 250000`
-2. Scan the real system once: `open3e_depictSystem` produces a matching
-   `devices.json` along with data point lists. Put them into `config/`.
-3. In `.env`: `OPEN3E_CAN_INTERFACE=can0`, adjust `OPEN3E_DIDS`, remove the
-   `open3e-sim` profile.
-4. Add a row to `devices` for every device in `devices.json`.
+Written from the documents named below and tested against the simulator; not
+tried on the hardware yet. The adapter described is the Waveshare RS485 CAN
+HAT (B) on a Raspberry Pi. With any other SocketCAN adapter, start at step 2.
+
+### 1. The HAT
+
+The HAT carries an MCP2515 CAN controller on SPI0 (chip select 0, interrupt
+on GPIO 25). [Waveshare's wiki](https://www.waveshare.com/wiki/RS485_CAN_HAT_(B))
+gives these lines for `config.txt` (`/boot/firmware/config.txt` on current
+systems):
+
+```
+dtparam=spi=on
+dtoverlay=mcp2515-can0,oscillator=16000000,interrupt=25,spimaxfrequency=1000000
+```
+
+After a reboot, `ip -brief link show can0` lists the interface, still `DOWN`.
+
+**`oscillator` has to match the crystal on the board.** The kernel derives
+the bit timing from it. With a wrong value nothing fails: the bus runs at
+another bit rate and no device answers. Waveshare's other HATs differ; the
+RS485 CAN HAT without the "(B)" carries 12 MHz, its boards from before August
+2019 8 MHz.
+
+The two RS485 channels of the same HAT are independent of this; the mbus
+module uses them ([modules/mbus](../mbus/README.md#3-the-serial-port)).
+
+### 2. Wiring
+
+- **CAN-H to H, CAN-L to L**, as a twisted pair. On a Vitocal 250-A the bus
+  is on plug 91; take the terminals from the installation and service
+  instructions of your device. open3e's wiki has
+  [photos and notes](https://github.com/open3e/open3e/wiki/020-Inbetriebnahme-CAN-Adapter-am-Raspberry)
+  for several devices.
+- **Ground.** That wiki recommends a third wire to the device's CAN ground
+  for an isolated adapter, so that the signals keep a reference. Waveshare
+  lists power and signal isolation for the HAT (B) without saying for which
+  of its interfaces. The wiki also notes that in the Vitocal 250-A
+  instructions of 11/2024 the ground terminal of plug 91 is no longer
+  assigned. Check both against your hardware.
+- **Termination: exactly one 120 Ω resistor at each of the two ends of the
+  bus**, none in between. The HAT has one, switched by a jumper. Whether it
+  belongs in depends on where the HAT sits and on what the bus already has.
+  With every device powered off, measure between H and L: about 60 Ω is right
+  (two resistors in parallel), 120 Ω means one is missing, 40 Ω one too many.
+- **One open3e instance per bus.** Its README warns that a second one leads
+  to conflicts on the bus.
+
+### 3. Bring the interface up
+
+open3e does not set the bit rate. It takes the interface as the host has
+configured it and fails if it is down. The E3 bus runs at 250 kbit/s:
+
+```bash
+modules/open3e/setup-can.sh             # can0; another name as argument
+```
+
+That lasts until the next reboot. To make it permanent, hand the interface to
+systemd-networkd, which only touches interfaces that have a `.network` file:
+
+```bash
+sudo tee /etc/systemd/network/80-can0.network >/dev/null <<'EOF'
+[Match]
+Name=can0
+
+[Link]
+RequiredForOnline=no
+
+[CAN]
+BitRate=250K
+RestartSec=10s
+EOF
+sudo systemctl enable --now systemd-networkd
+```
+
+- `RequiredForOnline=no`: a CAN link never counts as online. Without the
+  line, whatever waits for the network at boot (Docker among them) can wait
+  for it until networkd's timeout of 120 s.
+- `RestartSec` (`restart-ms` in the script): after a bus-off the controller
+  comes back by itself after 10 s. Without it the MCP2515 driver puts the
+  chip to sleep, and the interface stays dead until it is taken down and up
+  by hand.
+
+Check with `ip -details -statistics link show can0`: `state ERROR-ACTIVE`
+and `bitrate 250000`.
+
+### 4. Read one data point
+
+Before anything else, ask the heat pump (address `0x680`, open3e's default)
+for a single data point:
+
+```bash
+docker compose stop open3e
+docker compose --profile open3e run --rm --no-deps open3e \
+    open3e -c can0 -r 268 -v
+```
+
+```
+Configuration file devices.json not found, continuing with generic DID list, ECU 0x680
+0x680 268 FlowTemperatureSensor {"Actual": 39.6, "Minimum": 19.3, "Maximum": 63.4, "Average": 38.2, "SensorStatus": {"ID": 0, "Text": "no_error"}}
+closing 0x680 - bye!
+```
+
+The first line is expected here: without `-cnfg` the command reads from
+`0x680` with open3e's general data point list.
+
+| Observation | Likely cause |
+|---|---|
+| `OSError: [Errno 19] No such device` | no `can0`: overlay or `dtparam=spi=on` missing, HAT not seated; look at `dmesg` |
+| `Failed to transmit: Network is down [Error Code 100]` | the interface exists but is not up (step 3) |
+| `ERR/0x680.268 "Did not receive response in time. …"` after 3 s | the request left, nobody answered: H and L swapped, wrong bit rate or `oscillator`, termination, wrong plug |
+| `state ERROR-PASSIVE` or `BUS-OFF` in `ip -details -statistics link show can0`, TX errors counting up | the HAT's frames do not get through: same causes |
+
+### 5. Scan the system
+
+`open3e_depictSystem` asks every address for every data point and writes
+what it finds: a `devices.json` and, per control unit, a list of the data
+points that unit really has (`Open3Edatapoints_<address>.py`). Run it in the
+module's image, into [config/](config/), with the module stopped:
+
+```bash
+docker compose stop open3e
+docker compose --profile open3e run --rm --no-deps --user "$(id -u):$(id -g)" \
+    -w /scan -v "$PWD/modules/open3e/config:/scan" \
+    open3e open3e_depictSystem -c can0
+```
+
+(`/scan`, because the service already mounts the directory at `/config`,
+read-only, and Compose does not replace that mount.)
+
+open3e's README puts the scan at 10 to 20 minutes and asks for a new one
+after every firmware update of a device. With `-s` it also writes the
+`virtdata_<address>.txt` files the simulator plays back.
+
+The `devices.json` it writes needs two changes:
+
+```json
+{
+  "vitocal": {
+    "tx": "0x680",
+    "dpList": "/config/Open3Edatapoints_680.py",
+    "prop": "HPMUMASTER"
+  }
+}
+```
+
+- **The key becomes the name** (it is written as the address, `"0x680"`).
+  The name is the topic segment and with it the `device_key`
+  `open3e/<name>`, and what `OPEN3E_DIDS` refers to.
+- **`dpList` gets the path inside the container.** open3e resolves it from
+  its working directory, not from where `devices.json` lies.
+
+### 6. Switch the module on
+
+1. In `.env`: `OPEN3E_CAN_INTERFACE=can0`, the data points to read in
+   `OPEN3E_DIDS`, and the `open3e-sim` profile removed
+   (`docker compose rm -sf open3e-sim` before that, or it keeps running).
+2. Every name in `devices.json` needs a row in `devices`; [seed.sql](seed.sql)
+   brings `open3e/vitocal` and `open3e/vitocharge`. After adding one,
+   `docker compose restart ingest`.
+3. `docker compose up -d open3e`, then `docker compose logs -f open3e`.
 
 ## Switched off on purpose
 
