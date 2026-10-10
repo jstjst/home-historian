@@ -194,7 +194,7 @@ open3e's README puts the scan at 10 to 20 minutes and asks for a new one
 after every firmware update of a device. With `-s` it also writes the
 `virtdata_<address>.txt` files the simulator plays back.
 
-The `devices.json` it writes needs two changes:
+The `devices.json` it writes needs one change, and allows a second:
 
 ```json
 {
@@ -206,11 +206,17 @@ The `devices.json` it writes needs two changes:
 }
 ```
 
-- **The key becomes the name** (it is written as the address, `"0x680"`).
-  The name is the topic segment and with it the `device_key`
-  `open3e/<name>`, and what `OPEN3E_DIDS` refers to.
 - **`dpList` gets the path inside the container.** open3e resolves it from
   its working directory, not from where `devices.json` lies.
+- **The key may become a name.** It is the topic segment and with it the
+  `device_key` `open3e/<key>`, and what a list in `OPEN3E_DIDS` refers to.
+  The scan writes the address (`"0x680"`), which works just as well and
+  survives the next scan: the readable name is the device's `name` in the
+  database either way.
+
+A control unit that should not be read at all (a gateway, say) is taken out
+of `devices.json`. Left in, but without a row in `devices`, it is still read
+in every pass and its values are dropped.
 
 ### 6. Switch the module on
 
@@ -218,7 +224,7 @@ The `devices.json` it writes needs two changes:
    `OPEN3E_DIDS` (or [`all`](#reading-every-data-point)),
    and the `open3e-sim` profile removed
    (`docker compose rm -sf open3e-sim` before that, or it keeps running).
-2. Every name in `devices.json` needs a row in `devices`; [seed.sql](seed.sql)
+2. Every key in `devices.json` needs a row in `devices`; [seed.sql](seed.sql)
    brings `open3e/vitocal` and `open3e/vitocharge`. After adding one,
    `docker compose restart ingest`.
 3. `docker compose up -d open3e`, then `docker compose logs -f open3e`.
