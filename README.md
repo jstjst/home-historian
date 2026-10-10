@@ -63,6 +63,11 @@ After about a minute:
 | MQTT explorer (broker host there: `mosquitto`) | <http://localhost:4000> |
 | pgAdmin | <http://localhost:5050> |
 
+An MQTT client outside the stack, such as the MQTT Explorer desktop app, can
+also connect over WebSockets: protocol `ws://`, host `localhost`, port `9001`,
+no user, no TLS. The broker accepts any base path, so the app's default (`ws`)
+can stay.
+
 If nothing shows up: `docker compose ps` and
 `docker compose logs open3e ingest`.
 
