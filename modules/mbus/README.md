@@ -182,7 +182,8 @@ group.
 ### 4. Read one telegram
 
 [mbus_dump.py](mbus_dump.py) is part of the image. It sends exactly one
-request and prints the answer raw and decoded:
+request and prints the answer raw, decoded, and as the module would publish
+it:
 
 ```bash
 docker compose --profile mbus build mbus
@@ -197,14 +198,19 @@ received: 68888868083072…6c16
 
 manufacturer KAM  id 30303030  version 0x40  medium 0x0d  primary address 48  status 0x00
 
-DIF     VIF       value                   unit
-04      06        154000                  Wh
+DIF     VIF       decoded             unit      published as
+04      05        0                   Wh        04_05 = 0
+04      13        1.71                m^3       04_13 = 1.71
+04      FF07      377.0               -         04_FF07 = 37.7
 …
 ```
 
-Run it once per meter, not in a loop (the battery). The DIF and VIF columns
-are the keys of [the records](#the-records): compare them with
-[seed.sql](seed.sql) to see which of your meter's records are curated.
+Run it once per meter, not in a loop (the battery). "decoded" is what
+pyMeterBus reads from the record, "published as" the key and payload the
+module sends; they differ where the module scales (E8 and E9). A `-` means the
+record carries no unit. Units of the published values are not in the message
+at all: they are master data. Compare the keys with [seed.sql](seed.sql) to
+see which of your meter's records are curated.
 
 | Observation | Likely cause |
 |---|---|

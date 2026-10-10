@@ -2,8 +2,11 @@
 r"""Read one M-Bus meter once and show its telegram.
 
 For commissioning (see README.md), not part of the running module: sends ONE
-REQ_UD2 to a primary address, prints the answer as raw hex and then decoded,
-record by record. The keys of the metrics are the DIF and VIF columns.
+REQ_UD2 to a primary address, prints the answer as raw hex and then record by
+record: as pyMeterBus decodes it, and as the module would publish it (key and
+payload). The two differ where the module scales, and a record without a unit
+in the telegram shows "-": units of published values are master data
+(seed.sql), not part of the message.
 
     docker compose --profile mbus run --rm --no-deps mbus \
         python mbus_dump.py /dev/mbus --address 48
@@ -18,6 +21,8 @@ import sys
 
 import meterbus
 import serial
+
+from mbus_publisher import flatten_telegram
 
 
 def read_until_silent(port: serial.SerialBase) -> bytes:
@@ -77,7 +82,11 @@ def main() -> int:
         f"  primary address {frame.header.aField.parts[0]}"
         f"  status 0x{header.status_field.parts[0]:02x}\n"
     )
-    print(f"{'DIF':<8}{'VIF':<10}{'value':<24}unit")
+    published = {
+        measurement.topic.rsplit("/", 1)[1]: measurement.payload
+        for measurement in flatten_telegram(answer, "meter", "")
+    }
+    print(f"{'DIF':<8}{'VIF':<10}{'decoded':<20}{'unit':<10}published as")
     for record in frame.records:
         dif = bytes(record.dib.parts).hex().upper()
         vif = bytes(record.vib.parts).hex().upper()
@@ -87,7 +96,11 @@ def main() -> int:
             value, unit = f"?? {error!r}", ""
         if not isinstance(value, (int, str)):
             value = float(value)
-        print(f"{dif:<8}{vif:<10}{value!s:<24}{unit}")
+        if unit == "none":  # manufacturer-specific: the telegram names no unit
+            unit = "-"
+        key = f"{dif}_{vif}"
+        sent = f"{key} = {published[key]}" if key in published else "(not published)"
+        print(f"{dif:<8}{vif:<10}{value!s:<20}{unit:<10}{sent}")
     return 0
 
 
