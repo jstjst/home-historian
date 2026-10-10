@@ -151,7 +151,7 @@ services:
       -r ${OPEN3E_DIDS:-vitocal.268,vitocal.396,vitocharge.1603}
       -mfstr "{device}/{didNumber}_{didName}"
       -m localhost:1883:${MQTT_TOPIC_PREFIX:-historian}/open3e
-      -t ${OPEN3E_INTERVAL_SECONDS:-5}
+      -t ${OPEN3E_INTERVAL_SECONDS:-60}
     depends_on:
       - mosquitto
     restart: unless-stopped

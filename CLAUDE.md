@@ -195,6 +195,9 @@ does the analysis. Observe and analyse, never control.
 - **A CAN link under systemd-networkd never counts as online** (checked with
   `vcan`); its `.network` file needs `RequiredForOnline=no`, or
   `network-online.target` (Docker waits for it) hangs until the timeout.
+- **open3e's `-a` (all data points) reads once and exits**; `-t` only
+  repeats a `-r` list, and waits that long *after* each pass. "Everything"
+  is therefore a long `OPEN3E_DIDS`, built from the scan's files.
 - **open3e resolves `dpList` from its working directory**, not from where
   `devices.json` lies → `/config/Open3Edatapoints_<address>.py`.
 - **`docker compose run -v` does not replace a mount the service already has

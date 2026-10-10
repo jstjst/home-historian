@@ -20,8 +20,8 @@ code of its own.
 | Variable | Default | Meaning |
 |---|---|---|
 | `OPEN3E_CAN_INTERFACE` | `vcan0` | CAN interface of the host; `can0` for a real adapter |
-| `OPEN3E_DIDS` | `vitocal.268,vitocal.396,vitocharge.1603` | data points to read, as `<device>.<DID>` |
-| `OPEN3E_INTERVAL_SECONDS` | `5` | polling interval |
+| `OPEN3E_DIDS` | `vitocal.268,vitocal.396,vitocharge.1603` | data points to read, as `<device>.<DID>` or `<device>.[<DID>,<DID>,…]` |
+| `OPEN3E_INTERVAL_SECONDS` | `60` | pause between two passes |
 
 Which control units exist is defined in
 [config/devices.json](config/devices.json) (name, CAN address). Every name
@@ -30,6 +30,11 @@ few curated metrics.
 
 The service runs on the host network, because the CAN interface is a kernel
 interface of the host.
+
+**One list, one interval.** open3e reads the list from start to end, waits
+`OPEN3E_INTERVAL_SECONDS` and starts over, so a pass begins every interval
+plus the time the pass took. Reading some data points more often than
+others would need open3e's command channel, which stays off.
 
 ## Simulator
 
@@ -210,12 +215,49 @@ The `devices.json` it writes needs two changes:
 ### 6. Switch the module on
 
 1. In `.env`: `OPEN3E_CAN_INTERFACE=can0`, the data points to read in
-   `OPEN3E_DIDS`, and the `open3e-sim` profile removed
+   `OPEN3E_DIDS` ([all of them](#reading-every-data-point), if you like),
+   and the `open3e-sim` profile removed
    (`docker compose rm -sf open3e-sim` before that, or it keeps running).
 2. Every name in `devices.json` needs a row in `devices`; [seed.sql](seed.sql)
    brings `open3e/vitocal` and `open3e/vitocharge`. After adding one,
    `docker compose restart ingest`.
 3. `docker compose up -d open3e`, then `docker compose logs -f open3e`.
+
+## Reading every data point
+
+open3e has no setting for "everything" that keeps running: its `-a` reads
+all data points once and exits. The list in `OPEN3E_DIDS` can be as long as
+it needs to be, though, and the scan has written down what each control
+unit has. This prints the numbers of one unit:
+
+```bash
+grep -oE '^ *[0-9]+ *:' modules/open3e/config/Open3Edatapoints_680.py \
+    | tr -d ' :' | paste -sd, -
+```
+
+```
+256,262,268,381,382,396,505,507,548,592,604,691,692,875,1006,1007,1097
+```
+
+Put them in brackets behind the device's name, one group per device:
+
+```
+OPEN3E_DIDS=vitocal.[256,262,268,…],vitocharge.[256,262,382,…]
+```
+
+What that means for the rest of the stack:
+
+- **Every pass stores every value again**, changed or not: schedules,
+  serial numbers and error histories as well as temperatures. The 26 data
+  points of the simulator come to 143 values per pass; open3e's list for
+  a Vitocal has 539 data points with close to 2000 values. Delete from the
+  list what you do not want stored.
+- **A pass takes time.** open3e pauses 20 ms after every data point, on top
+  of the device's answer. Against the simulator the 26 data points took
+  2.7 s, so with 60 s a pass started every 62.8 s.
+- **Unknown values arrive as text stubs** and need curating
+  ([docs/architecture.md](../../docs/architecture.md)).
+- After a new scan (firmware update), build the list again.
 
 ## Switched off on purpose
 
