@@ -140,18 +140,40 @@ services:
     build: ./modules/open3e
     profiles: ["open3e"]
     network_mode: host
+    # Passes the stop signal on to whatever the shell below is running.
+    init: true
     environment:
       - PYTHONUNBUFFERED=1
+      - OPEN3E_DIDS=${OPEN3E_DIDS:-vitocal.268,vitocal.396,vitocharge.1603}
+      - OPEN3E_INTERVAL_SECONDS=${OPEN3E_INTERVAL_SECONDS:-60}
     volumes:
       - ./modules/open3e/config:/config:ro
     # {device}/... : the control unit becomes a topic segment of its own and
     # with it a device of its own (device_key "open3e/<device>").
-    command: >
-      open3e -c ${OPEN3E_CAN_INTERFACE:-vcan0} -cnfg /config/devices.json
-      -r ${OPEN3E_DIDS:-vitocal.268,vitocal.396,vitocharge.1603}
-      -mfstr "{device}/{didNumber}_{didName}"
-      -m localhost:1883:${MQTT_TOPIC_PREFIX:-historian}/open3e
-      -t ${OPEN3E_INTERVAL_SECONDS:-60}
+    #
+    # A list of data points is read by one open3e process, again and again
+    # (-r with -t). open3e's "all data points" (-a) reads once and exits, so
+    # for OPEN3E_DIDS=all it is started anew for every pass. That needs the
+    # data point lists of a scan: without them open3e asks for every data
+    # point it knows of and publishes an error for each one the device lacks.
+    command:
+      - sh
+      - -c
+      - |
+        set -- open3e -c ${OPEN3E_CAN_INTERFACE:-vcan0} -cnfg /config/devices.json \
+          -mfstr "{device}/{didNumber}_{didName}" \
+          -m localhost:1883:${MQTT_TOPIC_PREFIX:-historian}/open3e
+        if [ "$$OPEN3E_DIDS" != all ]; then
+          exec "$$@" -r "$$OPEN3E_DIDS" -t "$$OPEN3E_INTERVAL_SECONDS"
+        fi
+        if grep -q '"dpList": *""' /config/devices.json; then
+          echo "OPEN3E_DIDS=all needs a devices.json with the data point lists of a scan" >&2
+          exit 1
+        fi
+        while true; do
+          "$$@" -a || exit 1
+          sleep "$$OPEN3E_INTERVAL_SECONDS"
+        done
     depends_on:
       - mosquitto
     restart: unless-stopped

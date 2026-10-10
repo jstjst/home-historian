@@ -196,8 +196,11 @@ does the analysis. Observe and analyse, never control.
   `vcan`); its `.network` file needs `RequiredForOnline=no`, or
   `network-online.target` (Docker waits for it) hangs until the timeout.
 - **open3e's `-a` (all data points) reads once and exits**; `-t` only
-  repeats a `-r` list, and waits that long *after* each pass. "Everything"
-  is therefore a long `OPEN3E_DIDS`, built from the scan's files.
+  repeats a `-r` list, and waits that long *after* each pass. For
+  `OPEN3E_DIDS=all` the service's command therefore starts `open3e -a` in
+  a loop. Without the data point lists of a scan, `-a` asks for all 1564
+  data points open3e knows and publishes an error topic for each miss;
+  the command refuses to start then.
 - **open3e resolves `dpList` from its working directory**, not from where
   `devices.json` lies → `/config/Open3Edatapoints_<address>.py`.
 - **`docker compose run -v` does not replace a mount the service already has
