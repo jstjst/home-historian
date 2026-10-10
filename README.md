@@ -15,7 +15,8 @@ that records every process value of a plant without gaps is called a
  open3e  (CAN, E3 devices) ─┐
  vicare  (cloud API)       ─┼─► Mosquitto ─► ingest ─► TimescaleDB ─► Grafana / SQL
  mbus    (M-Bus meters)    ─┤   (MQTT 5,     (Python)   (PostgreSQL)
- … your own module         ─┘   buffers)
+ senec   (local API)       ─┤   buffers)
+ … your own module         ─┘
 ```
 
 ## What it is for, and what it is not
@@ -79,6 +80,7 @@ modules/
   open3e/              Viessmann E3 devices over CAN (+ simulator in sim/)
   vicare/              Viessmann ViCare cloud API
   mbus/                wired M-Bus meters, e.g. heat meters (+ simulator in sim/)
+  senec/               SENEC.Home battery storage, local API
 docs/
   architecture.md      decisions and their reasons, data model
   modules.md           the contract for writing your own module
@@ -97,6 +99,7 @@ not changing the core. The contract is in [docs/modules.md](docs/modules.md).
 | [vicare](modules/vicare/) | Viessmann ViCare cloud API | `vicare` | flattening and token handling tested offline |
 | [mbus](modules/mbus/) | wired M-Bus meters over a serial port (Kamstrup MULTICAL 303 heat meters) | `mbus` | tested against the simulator |
 | mbus simulator | M-Bus meters behind a TCP port | `mbus-sim` | – |
+| [senec](modules/senec/) | SENEC.Home battery storage over its local API (`lala.cgi`) | `senec` | tested on a SENEC.Home V3 hybrid duo |
 
 ## Configuration
 
@@ -105,16 +108,16 @@ switches that matter most:
 
 | Variable | Meaning |
 |---|---|
-| `COMPOSE_PROFILES` | what runs: `db`, `open3e`, `open3e-sim`, `vicare`, `mbus`, `mbus-sim`, `tools` |
+| `COMPOSE_PROFILES` | what runs: `db`, `open3e`, `open3e-sim`, `vicare`, `mbus`, `mbus-sim`, `senec`, `tools` |
 | `BIND_ADDRESS` | `127.0.0.1` (default) = local only, `0.0.0.0` = reachable from the LAN |
 | `MQTT_TOPIC_PREFIX` | top-level topic segment of all modules |
 | `INGEST_DATABASE_URL` | a database on another host (then drop the `db` profile) |
 
 **Devices have to be registered.** The ingester only stores values from
 devices listed in the `devices` table. Modules ship their master data as a
-`seed.sql`; those of the open3e and mbus modules are loaded automatically on
-first start. Where the devices depend on the installation (vicare, mbus), the
-module's README names the rows to insert.
+`seed.sql`; those of the open3e, mbus and senec modules are loaded
+automatically on first start. Where the devices depend on the installation
+(vicare, mbus), the module's README names the rows to insert.
 
 **The schema is only applied to an empty volume.** The files under
 `db/initdb/` run once, when the database starts for the first time. Later

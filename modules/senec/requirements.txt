@@ -1,0 +1,4 @@
+paho-mqtt==2.1.0
+pydantic-settings==2.14.2
+# The HTTP client. Pulls in urllib3, certifi, charset-normalizer and idna.
+requests==2.34.2

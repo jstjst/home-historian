@@ -27,6 +27,7 @@ does the analysis. Observe and analyse, never control.
 | `vicare` | module: polls the ViCare cloud API | `vicare` |
 | `mbus` | module: reads wired M-Bus meters (Kamstrup heat meters) over a serial port | `mbus` |
 | `mbus-sim` | simulates M-Bus meters behind a TCP port (`socket://mbus-sim:2400`) | `mbus-sim` |
+| `senec` | module: reads a SENEC.Home battery storage over its local API (`lala.cgi`) | `senec` |
 | `mqtt-explorer`, `pgadmin` | tools | `tools` |
 
 `COMPOSE_PROFILES` in `.env` decides what runs.
@@ -82,7 +83,7 @@ does the analysis. Observe and analyse, never control.
 - **Modules ship their master data as `seed.sql`** (idempotent). The schema
   itself creates no devices and no metrics.
 - Every module has its own Compose profile and its own variable prefix
-  (`OPEN3E_`, `VICARE_`, `MBUS_`).
+  (`OPEN3E_`, `VICARE_`, `MBUS_`, `SENEC_`).
 
 ## Design constraints that are easy to break
 
@@ -176,6 +177,20 @@ does the analysis. Observe and analyse, never control.
   the telegram's VIFs already carry both.
 - **M-Bus needs 8E1, and the Raspberry Pi's mini UART (`/dev/ttyS0`) has no
   parity bit.** Nothing fails; the meter just does not answer.
+- **SENEC's `lala.cgi` sends signed integers as two's complement**
+  (`i3_FFFFFFFF` is -1); ha-senec-v3 reads them as unsigned. A field sent
+  with a value is a write: the senec module only sends `{}` and `""`.
+- **`lala.cgi` reports misses with status 200**: `VARIABLE_NOT_FOUND` as a
+  field's value, `{"OBJECT_NOT_FOUND":""}` for a section, an empty body for
+  a request it cannot read.
+- **`STATISTIC` is empty on current SENEC firmware** (NPU image 2608): no
+  energy counters locally, energy has to be integrated from power.
+- **A SENEC redirects HTTP to HTTPS with a certificate that cannot be
+  verified** (issued for `senecGuiSelf` by SENEC's own root), and the
+  redirect turns the POST into a GET that answers 404.
+- **paho keeps QoS 1 messages in memory without a limit while the broker is
+  away**, about 5 kB each. The senec module publishes close to a thousand per
+  pass and therefore sets `max_queued_messages`.
 - **Compose cannot leave a `devices` entry out.** For the M-Bus simulator
   (TCP) the mbus service gets `MBUS_SERIAL_DEVICE=/dev/null`.
 - **A Compose `tmpfs` belongs to root** unless given `uid=`/`gid=`; a module

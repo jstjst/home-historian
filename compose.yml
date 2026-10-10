@@ -3,7 +3,7 @@
 # Core (always running):   mosquitto -> ingest
 # Storage + dashboards:    timescaledb, grafana          profile "db"
 # Modules (data sources):  open3e, open3e-sim, vicare,   one profile each
-#                          mbus, mbus-sim
+#                          mbus, mbus-sim, senec
 # Tools:                   mqtt-explorer, pgadmin        profile "tools"
 #
 # COMPOSE_PROFILES in .env decides what runs (template: .env.example), e.g.
@@ -95,6 +95,7 @@ services:
       - ./db/initdb/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./modules/open3e/seed.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
       - ./modules/mbus/seed.sql:/docker-entrypoint-initdb.d/11_module_mbus.sql:ro
+      - ./modules/senec/seed.sql:/docker-entrypoint-initdb.d/12_module_senec.sql:ro
       - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]
@@ -267,6 +268,32 @@ services:
     command: ["python", "-u", "/fake_meter.py"]
     volumes:
       - ./modules/mbus/sim/fake_meter.py:/fake_meter.py:ro
+    restart: unless-stopped
+    logging: *logging
+
+  # senec: reads a SENEC.Home battery storage over its local API (lala.cgi).
+  #   Every section the unit has, one topic per value; device "senec/<device>".
+  senec:
+    build: ./modules/senec
+    profiles: ["senec"]
+    # The heartbeat is touched every pass; keep that off the disk.
+    tmpfs:
+      - /run/senec:uid=1000,gid=1000
+    environment:
+      # Scheme and address of the unit, e.g. https://192.168.1.50
+      SENEC_URL: ${SENEC_URL:-}
+      SENEC_DEVICE: ${SENEC_DEVICE:-home}
+      # all = every section the unit lists, or a comma separated selection.
+      SENEC_SECTIONS: ${SENEC_SECTIONS:-all}
+      SENEC_POLL_INTERVAL_SECONDS: ${SENEC_POLL_INTERVAL_SECONDS:-60}
+      SENEC_HEARTBEAT_FILE: /run/senec/heartbeat
+      SENEC_MQTT_HOST: mosquitto
+      SENEC_MQTT_USERNAME: ${MQTT_USERNAME:-}
+      SENEC_MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      SENEC_MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-historian}/senec
+      TZ: ${TZ:-Europe/Berlin}
+    depends_on:
+      - mosquitto
     restart: unless-stopped
     logging: *logging
 
