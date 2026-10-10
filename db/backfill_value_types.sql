@@ -41,35 +41,65 @@ CREATE TEMP TABLE moved (
     oldest     timestamptz
 );
 
--- Text -> number.
-WITH updated AS (
-    UPDATE measurements m
-    SET value_num = m.value_str::double precision,
-        value_str = NULL
-    FROM metrics met
-    WHERE met.metric_id = m.metric_id
-      AND met.value_type = 'num'
-      AND m.value_str IS NOT NULL
-      AND pg_input_is_valid(m.value_str, 'double precision')
-    RETURNING m.metric_id, m.time
-)
-INSERT INTO moved
-SELECT metric_id, 'num', count(*), min(time) FROM updated GROUP BY metric_id;
+-- One UPDATE per metric, with its metric_id written into the statement:
+-- in a compressed chunk TimescaleDB then unpacks only that metric's segments.
+-- Joined against `metrics` instead, it unpacks every compressed row there is.
+-- A single metric can still hold more rows than one statement may unpack by
+-- default (100 000), so that limit is lifted for this session. What was
+-- unpacked is compressed again by the policy's next run.
+SET timescaledb.max_tuples_decompressed_per_dml_transaction = 0;
 
--- Text -> boolean, with the words the ingester accepts (_parse_bool).
-WITH updated AS (
-    UPDATE measurements m
-    SET value_bool = lower(btrim(m.value_str, E' \t\r\n')) IN ('true', '1', 'on', 'yes'),
-        value_str  = NULL
-    FROM metrics met
-    WHERE met.metric_id = m.metric_id
-      AND met.value_type = 'bool'
-      AND lower(btrim(m.value_str, E' \t\r\n'))
-          IN ('true', '1', 'on', 'yes', 'false', '0', 'off', 'no')
-    RETURNING m.metric_id, m.time
-)
-INSERT INTO moved
-SELECT metric_id, 'bool', count(*), min(time) FROM updated GROUP BY metric_id;
+DO $$
+DECLARE
+    met record;
+BEGIN
+    -- Text -> number.
+    FOR met IN
+        SELECT metric_id FROM metrics
+        WHERE value_type = 'num'
+          AND EXISTS (SELECT 1 FROM measurements m
+                      WHERE m.metric_id = metrics.metric_id
+                        AND m.value_str IS NOT NULL
+                        AND pg_input_is_valid(m.value_str, 'double precision'))
+    LOOP
+        EXECUTE format($sql$
+            WITH updated AS (
+                UPDATE measurements
+                SET value_num = value_str::double precision,
+                    value_str = NULL
+                WHERE metric_id = %1$s
+                  AND value_str IS NOT NULL
+                  AND pg_input_is_valid(value_str, 'double precision')
+                RETURNING time
+            )
+            INSERT INTO moved SELECT %1$s, 'num', count(*), min(time) FROM updated
+        $sql$, met.metric_id);
+    END LOOP;
+
+    -- Text -> boolean, with the words the ingester accepts (_parse_bool).
+    FOR met IN
+        SELECT metric_id FROM metrics
+        WHERE value_type = 'bool'
+          AND EXISTS (SELECT 1 FROM measurements m
+                      WHERE m.metric_id = metrics.metric_id
+                        AND lower(btrim(m.value_str, E' \t\r\n'))
+                            IN ('true', '1', 'on', 'yes', 'false', '0', 'off', 'no'))
+    LOOP
+        EXECUTE format($sql$
+            WITH updated AS (
+                UPDATE measurements
+                SET value_bool = lower(btrim(value_str, E' \t\r\n')) IN ('true', '1', 'on', 'yes'),
+                    value_str  = NULL
+                WHERE metric_id = %1$s
+                  AND lower(btrim(value_str, E' \t\r\n'))
+                      IN ('true', '1', 'on', 'yes', 'false', '0', 'off', 'no')
+                RETURNING time
+            )
+            INSERT INTO moved SELECT %1$s, 'bool', count(*), min(time) FROM updated
+        $sql$, met.metric_id);
+    END LOOP;
+END
+$$;
 
 -- What was moved.
 SELECT met.type, met.native_key, met.display_name, moved.target,

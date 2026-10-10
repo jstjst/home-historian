@@ -73,6 +73,7 @@ mosquitto/             MQTT broker with the timestamp plugin
 ingest/                MQTT -> database
 db/initdb/             schema and read-only role
 db/backfill_value_types.sql  move stored values after typing a metric
+db/enable_compression.sql    compression for a database created without it
 grafana/               data source and dashboards (provisioned)
 modules/
   open3e/              Viessmann E3 devices over CAN (+ simulator in sim/)
@@ -118,8 +119,11 @@ module's README names the rows to insert.
 **The schema is only applied to an empty volume.** The files under
 `db/initdb/` run once, when the database starts for the first time. Later
 changes are applied by hand, or you discard volume and measurements with
-`docker compose down -v`. To discard only the measurements and the uncurated
-metrics, see [docs/clear-data.md](docs/clear-data.md).
+`docker compose down -v`. A database from before the schema compressed its
+raw data gets that with
+[db/enable_compression.sql](db/enable_compression.sql). To discard only the
+measurements and the uncurated metrics, see
+[docs/clear-data.md](docs/clear-data.md).
 
 ## Security
 
@@ -139,7 +143,8 @@ metrics, see [docs/clear-data.md](docs/clear-data.md).
   7 days and delivers afterwards. Values a module sends at MQTT QoS 0 (open3e)
   can be lost within a window of about two seconds if the ingester stops at
   exactly that moment. Details in [docs/architecture.md](docs/architecture.md).
-- **Raw data grows without limit.** Neither retention nor compression is set up.
+- **Raw data is kept for good.** Chunks older than 7 days are compressed
+  (lossless); nothing is ever deleted, there is no retention.
 - **Curating metrics is manual work.** Unknown quantities are stored, but they
   only get a name, unit and category through an entry in `metrics`. The
   dashboard "home-historian - Stubs" lists what is waiting. A metric typed

@@ -119,6 +119,12 @@ does the analysis. Observe and analyse, never control.
   expires** (`INGEST_METRIC_CACHE_SECONDS`, 1 h by default), or at once with
   `docker compose restart ingest` (lossless, the broker buffers). Values
   already stored never move by themselves (backfill with an `UPDATE`).
+- **`measurements` is compressed after 7 days**, segmented by `device_id,
+  metric_id` (lossless; inserts into compressed chunks still work). An
+  `UPDATE` there has to carry the `metric_id` as a literal, or it unpacks
+  every compressed row and hits TimescaleDB's limit of 100 000 per
+  statement; `db/backfill_value_types.sql` shows the pattern. An existing
+  database gets compression with `db/enable_compression.sql`.
 - **Unknown devices are dropped.** The ingester loads `devices` at startup;
   after adding one, `docker compose restart ingest`.
 - **Grafana reads as the role `grafana` (`SELECT` only)**, never as the owner:

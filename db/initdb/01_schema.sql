@@ -122,6 +122,17 @@ CREATE TABLE measurements (
 SELECT create_hypertable('measurements', 'time', chunk_time_interval => INTERVAL '7 days');
 CREATE INDEX idx_measurements_lookup ON measurements (device_id, metric_id, time DESC);
 
+-- Compression: chunks older than 7 days are stored column by column, one
+-- segment per device and metric (the way they are queried). It is lossless,
+-- and compressed chunks can still be written to, only more slowly. On a
+-- database created before this was added: db/enable_compression.sql
+ALTER TABLE measurements SET (
+    timescaledb.compress,
+    timescaledb.compress_segmentby = 'device_id, metric_id',
+    timescaledb.compress_orderby   = 'time DESC'
+);
+SELECT add_compression_policy('measurements', INTERVAL '7 days');
+
 COMMENT ON TABLE measurements IS 'Time series. metric_id -> metrics, device_id -> devices (joined, no FK).';
 
 

@@ -230,6 +230,31 @@ it does not appear in analysis.
 otherwise dictate the size of table and index. The ingester resolves
 `(type, native_key)` once and keeps the result in a cache.
 
+### Old raw data is compressed
+
+Every pass of a module stores every value again, changed or not, and a
+row costs well over 100 bytes, half of it index. Chunks of `measurements`
+older than 7 days are therefore compressed: stored column by column, one
+segment per device and metric, ordered by time. That is the shape of the
+queries, and it puts similar values next to each other. In tests a
+compressed chunk took a twentieth to a thirtieth of the space and returned
+exactly the rows that went in.
+
+- **The recent chunks stay as they are.** A chunk spans 7 days and is
+  compressed once it lies 7 days back, so up to 14 days are uncompressed.
+  The ingester's inserts and its duplicate check normally only touch
+  those.
+- **Compressed chunks can still be written to**, only more slowly: a late
+  value is stored next to the compressed data, and the policy compresses
+  it on its next run. Both aggregates read compressed chunks like any
+  other.
+- **An `UPDATE` unpacks what it might touch.** With the `metric_id`
+  written into the statement that is one metric's segments; with a join
+  it is every compressed row, and TimescaleDB refuses more than 100 000
+  per statement by default.
+  [db/backfill_value_types.sql](../db/backfill_value_types.sql) therefore
+  goes metric by metric.
+
 ### `display_name` and `display_subname`: the unified view
 
 Every source names the same physical quantity differently. For analysis each
@@ -311,7 +336,7 @@ purpose, because the type cannot be derived from the topic.
 
 ## Open points
 
-- Retention and compression for old raw data.
+- Retention for old raw data. It is compressed, but never deleted.
 - Device types and categories are enums that grow with
   `ALTER TYPE … ADD VALUE`; so far they cover the installations this project
   grew out of.
