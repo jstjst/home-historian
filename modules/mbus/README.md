@@ -53,12 +53,19 @@ device, because all meters share their metrics:
 
 ```sql
 INSERT INTO devices (type, device_key, name, category) VALUES
-  ('kamstrup', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
-  ('kamstrup', 'mbus/hc2', 'Heat meter HC2', 'hc2');
+  ('multical303', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
+  ('multical303', 'mbus/hc2', 'Heat meter HC2', 'hc2');
 ```
 
 The ingester reads the list of devices at startup, so follow up with
 `docker compose restart ingest`.
+
+A database created before the type got its name calls it `kamstrup`. Rename
+it there, rows included, and restart the ingester afterwards:
+
+```sql
+ALTER TYPE device_type RENAME VALUE 'kamstrup' TO 'multical303';
+```
 
 ## The records
 

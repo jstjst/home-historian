@@ -35,7 +35,7 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 -- A device type is a product line whose units deliver the same metrics.
 -- Add one with: ALTER TYPE device_type ADD VALUE '<type>';
-CREATE TYPE device_type AS ENUM ('vitocal', 'vitocharge', 'kamstrup', 'electricity_meter');
+CREATE TYPE device_type AS ENUM ('vitocal', 'vitocharge', 'multical303', 'electricity_meter');
 
 -- The part of the installation a value belongs to.
 CREATE TYPE category AS ENUM (

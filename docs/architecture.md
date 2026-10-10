@@ -202,13 +202,13 @@ in sync three times. This way it exists once:
 ```sql
 -- one definition for every meter of this type
 INSERT INTO metrics (type, native_key, display_name, unit, aggregation)
-VALUES ('kamstrup', '04_06', 'Heat energy', 'wh', 'counter');
+VALUES ('multical303', '04_06', 'Heat energy', 'wh', 'counter');
 
 -- three devices sharing it
 INSERT INTO devices (type, device_key, name, category) VALUES
-  ('kamstrup', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
-  ('kamstrup', 'mbus/hc2', 'Heat meter HC2', 'hc2'),
-  ('kamstrup', 'mbus/hc3', 'Heat meter HC3', 'hc3');
+  ('multical303', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
+  ('multical303', 'mbus/hc2', 'Heat meter HC2', 'hc2'),
+  ('multical303', 'mbus/hc3', 'Heat meter HC3', 'hc3');
 ```
 
 A "device" here is the physical unit, not the module: the open3e module reads
