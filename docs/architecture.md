@@ -195,20 +195,20 @@ This is the central decision: `metrics` describes what a quantity means **for
 a type of device**. The individual device only comes in with the measurement.
 
 The reason is identical devices. Three heat meters of the same model expose
-the same registers. If the definition were attached to the device, "register 1
-= energy in kWh, cumulative" would have to be curated three times and kept in
-sync three times. This way it exists once:
+the same records. If the definition were attached to the device, "record
+04_06 = heat energy, cumulative" would have to be curated three times and kept
+in sync three times. This way it exists once:
 
 ```sql
 -- one definition for every meter of this type
 INSERT INTO metrics (type, native_key, display_name, unit, aggregation)
-VALUES ('kamstrup', '1.Actual', 'Energy total', 'kwh', 'counter');
+VALUES ('kamstrup', '04_06', 'Heat energy', 'wh', 'counter');
 
 -- three devices sharing it
 INSERT INTO devices (type, device_key, name, category) VALUES
-  ('kamstrup', 'heatmeter/hc1', 'Heat meter HC1', 'hc1'),
-  ('kamstrup', 'heatmeter/hc2', 'Heat meter HC2', 'hc2'),
-  ('kamstrup', 'heatmeter/hc3', 'Heat meter HC3', 'hc3');
+  ('kamstrup', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
+  ('kamstrup', 'mbus/hc2', 'Heat meter HC2', 'hc2'),
+  ('kamstrup', 'mbus/hc3', 'Heat meter HC3', 'hc3');
 ```
 
 A "device" here is the physical unit, not the module: the open3e module reads

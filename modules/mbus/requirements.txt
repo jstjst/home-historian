@@ -1,0 +1,6 @@
+paho-mqtt==2.1.0
+pydantic-settings==2.14.2
+# Decodes the M-Bus telegrams. Pulls in pyserial (the serial port), pyaml,
+# pycryptodome and simplejson. Its command-line tools are missing from the
+# 0.8.5 package (the entry points import meterbus.tools, which is not shipped).
+pyMeterBus==0.8.5

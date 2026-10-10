@@ -2,7 +2,8 @@
 #
 # Core (always running):   mosquitto -> ingest
 # Storage + dashboards:    timescaledb, grafana          profile "db"
-# Modules (data sources):  open3e, open3e-sim, vicare    one profile each
+# Modules (data sources):  open3e, open3e-sim, vicare,   one profile each
+#                          mbus, mbus-sim
 # Tools:                   mqtt-explorer, pgadmin        profile "tools"
 #
 # COMPOSE_PROFILES in .env decides what runs (template: .env.example), e.g.
@@ -93,6 +94,7 @@ services:
       - timescale_data:/var/lib/postgresql/data
       - ./db/initdb/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       - ./modules/open3e/seed.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
+      - ./modules/mbus/seed.sql:/docker-entrypoint-initdb.d/11_module_mbus.sql:ro
       - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]
@@ -198,6 +200,51 @@ services:
       - vicare-token:/data
     depends_on:
       - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # mbus: reads wired M-Bus meters (heat meters, ...) over a serial port.
+  #   The host's serial device is passed in as /dev/mbus. Compose cannot leave
+  #   a device out, so for the simulator, which is reached over TCP, pass
+  #   /dev/null: MBUS_SERIAL_DEVICE=/dev/null, MBUS_SERIAL_PORT=socket://mbus-sim:2400
+  mbus:
+    build: ./modules/mbus
+    profiles: ["mbus"]
+    devices:
+      - ${MBUS_SERIAL_DEVICE:-/dev/ttyUSB0}:/dev/mbus
+    # The group that owns serial devices on the host (GID 20 on Debian).
+    group_add: ["dialout"]
+    # The heartbeat is touched every pass; keep that off the disk.
+    tmpfs:
+      - /run/mbus:uid=1000,gid=1000
+    environment:
+      MBUS_SERIAL_PORT: ${MBUS_SERIAL_PORT:-/dev/mbus}
+      MBUS_BAUDRATE: ${MBUS_BAUDRATE:-2400}
+      # <name>:<primary address>,... -> one device "mbus/<name>" each.
+      MBUS_METERS: ${MBUS_METERS:-}
+      # Battery-powered meters pay for every reading; the Kamstrup MULTICAL
+      # 303 is rated for one every 120 s (minimum enforced in code: 120).
+      MBUS_POLL_INTERVAL_SECONDS: ${MBUS_POLL_INTERVAL_SECONDS:-120}
+      MBUS_HEARTBEAT_FILE: /run/mbus/heartbeat
+      MBUS_MQTT_HOST: mosquitto
+      MBUS_MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MBUS_MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MBUS_MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-historian}/mbus
+      TZ: ${TZ:-Europe/Berlin}
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
+  # mbus-sim: simulated M-Bus meters behind a TCP port, to try the mbus module
+  #   without hardware. Answers every primary address with the telegram of a
+  #   Kamstrup MULTICAL 303 (fixed values).
+  mbus-sim:
+    image: python:3.12-slim
+    profiles: ["mbus-sim"]
+    command: ["python", "-u", "/fake_meter.py"]
+    volumes:
+      - ./modules/mbus/sim/fake_meter.py:/fake_meter.py:ro
     restart: unless-stopped
     logging: *logging
 

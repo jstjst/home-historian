@@ -25,6 +25,8 @@ does the analysis. Observe and analyse, never control.
 | `open3e` | module: reads DIDs from Viessmann E3 devices over CAN | `open3e` |
 | `open3e-sim` | virtualE3 simulates Vitocal (`0x680`) + Vitocharge (`0x6a1`) on `vcan0` | `open3e-sim` |
 | `vicare` | module: polls the ViCare cloud API | `vicare` |
+| `mbus` | module: reads wired M-Bus meters (Kamstrup heat meters) over a serial port | `mbus` |
+| `mbus-sim` | simulates M-Bus meters behind a TCP port (`socket://mbus-sim:2400`) | `mbus-sim` |
 | `mqtt-explorer`, `pgadmin` | tools | `tools` |
 
 `COMPOSE_PROFILES` in `.env` decides what runs.
@@ -80,7 +82,7 @@ does the analysis. Observe and analyse, never control.
 - **Modules ship their master data as `seed.sql`** (idempotent). The schema
   itself creates no devices and no metrics.
 - Every module has its own Compose profile and its own variable prefix
-  (`OPEN3E_`, `VICARE_`).
+  (`OPEN3E_`, `VICARE_`, `MBUS_`).
 
 ## Design constraints that are easy to break
 
@@ -124,6 +126,9 @@ does the analysis. Observe and analyse, never control.
 - **Per-feature dedup in the vicare module, no global watermark.** Compare the
   timestamp per feature, or late values of other features are silently
   dropped.
+- **The mbus module must not poll faster than every 120 s.** Kamstrup rates
+  the MULTICAL 303's battery for that, and the battery cannot be replaced
+  without breaking the verification seal. The minimum is enforced in code.
 - **Real-time continuous aggregates need `materialized_only = false`**, or the
   current (not yet materialised) edge silently goes missing from dashboards.
 - **Ports are bound locally by default** (`BIND_ADDRESS`), because broker and
@@ -155,6 +160,16 @@ does the analysis. Observe and analyse, never control.
   per-feature timestamps are in memory on purpose (the first pass refills a
   rebuilt database). The ingester only checks DUP redeliveries, so every
   feature unchanged since the last pass is stored a second time.
+- **Importing `meterbus` configures the root logger** (`basicConfig` in its
+  `serial.py`). The mbus module therefore calls `basicConfig(force=True)`.
+- **pyMeterBus 0.8.5 ships without its command-line tools** (the entry points
+  import `meterbus.tools`, which is not in the package).
+- **M-Bus needs 8E1, and the Raspberry Pi's mini UART (`/dev/ttyS0`) has no
+  parity bit.** Nothing fails; the meter just does not answer.
+- **Compose cannot leave a `devices` entry out.** For the M-Bus simulator
+  (TCP) the mbus service gets `MBUS_SERIAL_DEVICE=/dev/null`.
+- **A Compose `tmpfs` belongs to root** unless given `uid=`/`gid=`; a module
+  running as a user cannot write its heartbeat there otherwise.
 - **Grafana + `includeAll` quotes values twice** → `LIKE '${category:csv}'`
   instead of `LIKE '$category'`.
 - **Grouping by `display_name` alone** collapses actual/min/max/average into
