@@ -17,9 +17,10 @@ meter of a type, including the manufacturer-specific records a generic name
 could not tell apart.
 
 The payload is the value as pyMeterBus scales it (Wh, m^3, W, degrees
-Celsius, seconds), not the meter's display unit. All records of one telegram
-share one time, the moment of the reading, sent as the MQTT 5 user property
-"timestamp".
+Celsius, seconds), not the meter's display unit. Kamstrup's E8 and E9 carry
+no scale of their own; the module gives them one (see
+kamstrup_e8_e9_factor). All records of one telegram share one time, the moment
+of the reading, sent as the MQTT 5 user property "timestamp".
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Any, Iterator
 
@@ -175,6 +177,30 @@ def format_value(value: Any) -> str:
     return f"{float(value):.12g}"
 
 
+# Kamstrup's registers E8 and E9 (volume x inlet / outlet temperature), sent
+# as manufacturer-specific records.
+KAMSTRUP_E8_E9 = ("FF07", "FF08")
+
+
+def kamstrup_e8_e9_factor(frame: Any) -> Decimal | None:
+    """What E8 and E9 of this telegram are multiplied by to get m^3 x degC.
+
+    The two registers count in steps of the volume register, so their
+    resolution follows the volume's, which the meter's CCC code fixes
+    (technical description 5512-2701, 7.1.2): with the volume in litres they
+    are m^3 x degC x 10, with 0.01 m^3 they are m^3 x degC, and so on. Their
+    records say nothing about this, but the volume record of the same
+    telegram does: its VIF is 0x10 + n for a resolution of 10^(n-6) m^3.
+
+    None for a telegram without a volume record.
+    """
+    for record in frame.records:
+        vib = bytes(record.vib.parts)
+        if len(vib) == 1 and 0x10 <= vib[0] <= 0x17:
+            return Decimal(10) ** ((vib[0] & 0x07) - 4)
+    return None
+
+
 def flatten_telegram(telegram: bytes, topic_prefix: str, timestamp: str) -> Iterator[Measurement]:
     """Turn one data telegram into one measurement per record."""
     try:
@@ -184,9 +210,14 @@ def flatten_telegram(telegram: bytes, topic_prefix: str, timestamp: str) -> Iter
     if not isinstance(frame, meterbus.TelegramLong):
         raise MeterError(f"not a data telegram: {telegram.hex()}")
 
+    # On a meter of another make the same VIFs mean something else.
+    is_kamstrup = frame.body.bodyHeader.manufacturer_field.decodeManufacturer == "KAM"
+    e8_e9_factor = kamstrup_e8_e9_factor(frame) if is_kamstrup else None
+
     seen: set[str] = set()
     for record in frame.records:
-        key = f"{bytes(record.dib.parts).hex().upper()}_{bytes(record.vib.parts).hex().upper()}"
+        vif = bytes(record.vib.parts).hex().upper()
+        key = f"{bytes(record.dib.parts).hex().upper()}_{vif}"
         if key in seen:
             # Two values on one topic at one time would be one series with
             # contradicting points. Not expected from a conforming meter.
@@ -194,7 +225,18 @@ def flatten_telegram(telegram: bytes, topic_prefix: str, timestamp: str) -> Iter
             continue
         seen.add(key)
         try:
-            payload = format_value(record.value)
+            value = record.value
+            if is_kamstrup and vif in KAMSTRUP_E8_E9:
+                if e8_e9_factor is None:
+                    # A number in an unknown unit is worse than none, and
+                    # without the volume E8 and E9 are of no use anyway.
+                    logger.warning(
+                        "record %s in %s has no volume record to take its scale from -- skipped",
+                        key, topic_prefix,
+                    )
+                    continue
+                value = value * e8_e9_factor
+            payload = format_value(value)
         except Exception as error:  # one odd record must not cost the others
             logger.warning("record %s in %s cannot be decoded (%r) -- skipped", key, topic_prefix, error)
             continue

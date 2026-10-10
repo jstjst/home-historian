@@ -164,6 +164,10 @@ does the analysis. Observe and analyse, never control.
   `serial.py`). The mbus module therefore calls `basicConfig(force=True)`.
 - **pyMeterBus 0.8.5 ships without its command-line tools** (the entry points
   import `meterbus.tools`, which is not in the package).
+- **Kamstrup's E8/E9 records carry no scale; their resolution follows the
+  volume's** (CCC code). The mbus module scales them from the volume VIF of
+  the same telegram, for manufacturer `KAM` only. No setting for B or CCC:
+  the telegram's VIFs already carry both.
 - **M-Bus needs 8E1, and the Raspberry Pi's mini UART (`/dev/ttyS0`) has no
   parity bit.** Nothing fails; the meter just does not answer.
 - **Compose cannot leave a `devices` entry out.** For the M-Bus simulator

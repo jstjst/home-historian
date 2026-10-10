@@ -65,16 +65,17 @@ The ingester reads the list of devices at startup, so follow up with
 The topic of a value is the header of its record in hex, as the meter sends
 it: `<DIF>_<VIF>`, each with its extension bytes. The DIF says which value of
 a quantity this is (`0x` current, `1x` maximum, `3x` during an error state,
-`4x`/`5x` stored at the target date), the VIF which quantity. A meter decides
-by its configuration what it sends; these are the records of a MULTICAL 303
-heat/cooling meter with the standard datagram, as curated in
+`4x`/`5x` stored at the target date), the VIF which quantity and at which
+resolution. A meter decides by its configuration what it sends; these are the
+records of two MULTICAL 303 with the standard datagram, as curated in
 [seed.sql](seed.sql):
 
 | Key | Quantity | Payload unit |
 |---|---|---|
-| `04_06`, `04_863C` | heat energy, cooling energy | Wh |
-| `04_14` | volume | m³ |
-| `04_FF07`, `04_FF08` | inlet energy E8, outlet energy E9 | m³·°C |
+| `04_05` or `04_06` | heat energy, sent in 0.1 kWh or in kWh | Wh |
+| `04_863C` | cooling energy (heat/cooling meters only) | Wh |
+| `04_13` or `04_14` | volume, sent in litres or in 0.01 m³ | m³ |
+| `04_FF07`, `04_FF08` | E8, E9: volume × inlet / outlet temperature | m³·°C |
 | `02_59`, `02_5D`, `02_61` | flow temperature, return temperature, difference | °C, °C, K |
 | `02_2D`, `12_2D` | thermal power, its maximum | W |
 | `02_3B`, `12_3B` | volume flow, its maximum | m³/h |
@@ -83,7 +84,31 @@ heat/cooling meter with the standard datagram, as curated in
 | `44_…`, `52_…`, `42_6C` | the values stored at the yearly target date, and that date | as above |
 
 Payloads are in the units pyMeterBus scales to, not the meter's display
-units: a meter showing 154 kWh arrives as `154000`.
+units: a meter showing 154 kWh arrives as `154000`. That holds whatever the
+resolution, so `04_05` and `04_06` are the same quantity in the same unit
+under two keys, and both carry the same name in the seed.
+
+**E8 and E9** are Kamstrup's registers for average temperatures: with every
+volume step the meter adds volume × inlet temperature to E8 and volume ×
+outlet temperature to E9. Over any period, the increase of E8 divided by the
+increase of the volume is the flow-weighted mean inlet temperature, and E9
+gives the outlet likewise.
+
+They are the one place where the module scales by itself. Their records are
+manufacturer-specific and carry no scale, while their resolution follows that
+of the volume (technical description 5512-2701, 7.1.2): a meter that counts
+the volume in litres sends m³·°C × 10, one that counts in 0.01 m³ sends
+m³·°C. The module reads the volume's resolution from the volume record of the
+same telegram and publishes plain m³·°C: the meter with 1.71 m³ at about
+21 °C sent 377 and is published as `37.7`. Without a volume record in the
+telegram, E8 and E9 are skipped with a warning.
+
+**No setting for the meter's configuration is needed.** Unit and resolution
+are the meter's B and CCC code (display, TECH loop, `2-011-10`), and every
+telegram carries both in its VIFs: B = 3 with CCC = 407, for one, means
+0.1 kWh, litres, l/h and 0.1 kW and arrives as `04_05`, `04_13`, `02_3B` and
+`02_2D`. A meter set to GJ (B = 2) sends its energy in joules under keys of
+its own (`04_0E`, `04_0F`), which are not curated.
 
 ## Behaviour
 

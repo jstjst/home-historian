@@ -4,9 +4,16 @@
 --   (type 'kamstrup'). One definition serves every meter of the type; which
 --   circuit a meter sits in is the DEVICE's category.
 --   native_key = "<DIF>_<VIF>", the record header in hex. The keys below are
---   those of the telegram in sim/fake_meter.py (a heat/cooling meter with the
---   standard datagram). A meter configured differently sends other records;
---   the ingester creates those as stubs.
+--   those of two telegrams: the one in sim/fake_meter.py (a heat/cooling
+--   meter) and one read from an installed heat meter. The VIF carries the
+--   resolution, so energy and volume have a key per resolution (05/06 and
+--   13/14); the payload is scaled to the same unit either way. A meter
+--   configured differently sends other records; the ingester creates those
+--   as stubs.
+--   E8 and E9 (volume * inlet / outlet temperature) arrive in m^3 * degree
+--   Celsius whatever the meter's resolution: the module scales them from the
+--   volume record of the same telegram. Their increase divided by the
+--   increase of the volume is the flow-weighted mean temperature.
 --   Units are those of the payload (pyMeterBus scales to Wh, m^3, W, seconds),
 --   not those on the meter's display.
 --
@@ -23,8 +30,10 @@
 -- DIF: 0x = current value, 1x = maximum, 3x = value during error state,
 --      4x/5x = stored at the yearly target date (storage number 1).
 INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
+  ('kamstrup', '04_05',   'Heat energy',             'actual',      'wh',         NULL, 'num', 'counter'),
   ('kamstrup', '04_06',   'Heat energy',             'actual',      'wh',         NULL, 'num', 'counter'),
   ('kamstrup', '04_863C', 'Cooling energy',          'actual',      'wh',         NULL, 'num', 'counter'),
+  ('kamstrup', '04_13',   'Volume',                  'actual',      'm3',         NULL, 'num', 'counter'),
   ('kamstrup', '04_14',   'Volume',                  'actual',      'm3',         NULL, 'num', 'counter'),
   ('kamstrup', '04_FF07', 'Inlet energy E8',         'actual',      'm3*celsius', NULL, 'num', 'counter'),
   ('kamstrup', '04_FF08', 'Outlet energy E9',        'actual',      'm3*celsius', NULL, 'num', 'counter'),
@@ -38,8 +47,10 @@ INSERT INTO metrics (type, native_key, display_name, display_subname, unit, cate
   ('kamstrup', '02_3B',   'Volume flow',             'actual',      'm3/hour',    NULL, 'num', 'gauge'),
   ('kamstrup', '12_3B',   'Volume flow',             'max',         'm3/hour',    NULL, 'num', 'gauge'),
   ('kamstrup', '02_FF22', 'Info code',               'state',       NULL,         NULL, 'num', 'gauge'),
+  ('kamstrup', '44_05',   'Heat energy',             'target date', 'wh',         NULL, 'num', 'gauge'),
   ('kamstrup', '44_06',   'Heat energy',             'target date', 'wh',         NULL, 'num', 'gauge'),
   ('kamstrup', '44_863C', 'Cooling energy',          'target date', 'wh',         NULL, 'num', 'gauge'),
+  ('kamstrup', '44_13',   'Volume',                  'target date', 'm3',         NULL, 'num', 'gauge'),
   ('kamstrup', '44_14',   'Volume',                  'target date', 'm3',         NULL, 'num', 'gauge'),
   ('kamstrup', '44_FF07', 'Inlet energy E8',         'target date', 'm3*celsius', NULL, 'num', 'gauge'),
   ('kamstrup', '44_FF08', 'Outlet energy E9',        'target date', 'm3*celsius', NULL, 'num', 'gauge'),
