@@ -114,8 +114,10 @@ its own (`04_0E`, `04_0F`), which are not curated.
 
 - **Every pass publishes every record**, including those that rarely change
   (the target-date values). Each reading is a new measurement with a new time.
-- **A meter that does not answer costs only itself.** The others are read
-  and published; the pass logs one warning.
+- **A request that gets no reply is repeated once**, as an M-Bus master
+  does. Before every request the bus is left idle for a moment (0.1 s).
+- **A meter that still does not answer costs only itself.** The others are
+  read and published; the pass logs a warning.
 - **Healthcheck** ([healthcheck.py](healthcheck.py)): the service only counts
   as healthy if *every* configured meter answered recently and the broker was
   connected.

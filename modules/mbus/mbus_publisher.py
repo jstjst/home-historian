@@ -134,6 +134,10 @@ class MeterError(Exception):
     """A meter did not answer, or not with a usable telegram."""
 
 
+class NoAnswer(MeterError):
+    """Not a single byte came back."""
+
+
 # ---------------------------------------------------------------------
 # M-Bus
 # ---------------------------------------------------------------------
@@ -147,6 +151,11 @@ def request_frame(address: int) -> bytes:
 def read_telegram(port: serial.SerialBase, address: int) -> bytes:
     """Ask one meter for its data and return the raw long frame."""
     request = request_frame(address)
+    # Leave the bus idle before speaking. The standard asks for 33 bit times
+    # after a failed exchange; a level converter behind RS485 also needs a
+    # moment to turn around after the previous meter's answer, and a request
+    # sent into that is lost.
+    time.sleep(max(0.1, 33 / port.baudrate))
     port.reset_input_buffer()
     port.write(request)
 
@@ -157,7 +166,7 @@ def read_telegram(port: serial.SerialBase, address: int) -> bytes:
         port.read(1)
         head = port.read(4)
     if not head:
-        raise MeterError("no answer")
+        raise NoAnswer("no answer")
     # Long frame: 68 L L 68, then L bytes, checksum, 16.
     if len(head) < 4 or head[0] != 0x68 or head[3] != 0x68 or head[1] != head[2]:
         raise MeterError(f"not the start of a data telegram: {head.hex()}")
@@ -326,7 +335,16 @@ def run_once(publisher: MeasurementPublisher, settings: Settings) -> None:
     ) as port:
         for name, address in settings.meters.items():
             try:
-                telegram = read_telegram(port, address)
+                try:
+                    telegram = read_telegram(port, address)
+                except NoAnswer:
+                    # An M-Bus master repeats a request that got no reply
+                    # (the standard: up to twice). Once is enough here, and
+                    # only after silence: a meter that did not hear the
+                    # request spent nothing on it, while one that answered
+                    # with a garbled telegram would pay for a second answer.
+                    logger.warning("Meter %s (address %d): no answer -- asking once more", name, address)
+                    telegram = read_telegram(port, address)
                 timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
                 measurements = list(flatten_telegram(
                     telegram,
