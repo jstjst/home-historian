@@ -315,7 +315,7 @@ every pass and its values are dropped.
 ## Simulator
 
 [sim/](sim/) holds the configuration for
-[virtualE3](https://github.com/philippoo66/vitualE3). The simulator answers
+[virtualE3](https://github.com/lgraf/vituale3). The simulator answers
 as two devices (Vitocal `0x680`, Vitocharge `0x6a1`) on the virtual CAN bus
 `vcan0`, with fixed values.
 
@@ -326,6 +326,15 @@ docker compose --profile open3e --profile open3e-sim up -d
 
 `vcan` exists on Linux only. The script explains what to do about a missing
 kernel module and how to make the interface permanent.
+
+Another system can be simulated from a capture of the real one. A
+[scan](#5-scan-the-system) with `-s` writes the files the simulator needs:
+`devices.json`, `Open3Edatapoints_<address>.py` and `virtdata_<address>.txt`
+per control unit. Put them into [sim/](sim/) and adjust the mounts of the
+`open3e-sim` service in [compose.yml](../../compose.yml), which names each
+file. A capture holds identifiers of the devices it was taken from: the
+shipped simulation data has placeholders in data points 256 and 604
+(`1234567801234567`, `VIESSMANN-0815`). Check a capture before publishing it.
 
 Data points with simulation data:
 

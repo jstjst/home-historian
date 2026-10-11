@@ -2,13 +2,13 @@
 
 Instructions for Claude Code in this repository. Overview:
 [README.md](README.md). Decisions and data model:
-[docs/architecture.md](docs/architecture.md). Module contract:
+[docs/architecture.md](docs/architecture.md). What a module has to provide:
 [docs/modules.md](docs/modules.md).
 
 ## What this project is
 
-**home-historian**: a process historian for the energy devices in a
-single-family home (heat pump, PV, battery, meters). Modules read data sources
+**home-historian**: a process historian for the technical systems of a home
+(heating, PV, battery storage, meters). Modules read data sources
 and publish to MQTT (Mosquitto); the ingester writes to TimescaleDB; Grafana
 does the analysis. The stack reads and never controls.
 
@@ -75,10 +75,11 @@ does the analysis. The stack reads and never controls.
 
 - The core (broker, ingester, schema) contains nothing specific to a device.
   Device-specific code and data belong in a module under `modules/<name>/`.
-- Topic contract: `<prefix>/<module>/<device>/<quantity…>`, scalar payload,
-  one value per topic. `<module>/<device>` is the `device_key`, the rest is
-  the `native_key` (`/` → `.`). One device is one physical unit; no device
-  name inside the `native_key`.
+- Topic format: `<prefix>/<device key>/<native key>`, scalar payload, one
+  value per topic. The device key has one or more segments, the first one
+  the module's name, and is the `device_key`; the rest is the `native_key`
+  (`/` → `.`). The ingester finds the device by longest-prefix match. One
+  device is one physical unit; no device name inside the `native_key`.
 - A module publishes every value its source delivers under the source's own
   name. Name, unit, category and type are assigned in `metrics`, also later
   ([docs/architecture.md](docs/architecture.md)).

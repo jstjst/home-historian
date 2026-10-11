@@ -136,7 +136,7 @@ services:
 
   # ===================================================================
   # Modules: one service per data source, each with its own profile
-  # (modules/<name>/). The contract of a module: docs/modules.md
+  # (modules/<name>/). What a module has to provide: docs/modules.md
   # ===================================================================
 
   # open3e: reads data points (DIDs) from Viessmann E3 devices over CAN.

@@ -25,7 +25,7 @@ module ──publish──► Mosquitto ──► ingest ──► TimescaleDB �
 ```
 
 1. A module reads a data source and publishes every value as an MQTT topic
-   of its own, `<prefix>/<device…>/<quantity…>`, with a scalar payload.
+   of its own, `<prefix>/<device key>/<native key>`, with a scalar payload.
 2. The broker stamps every message with the time it received it.
 3. The ingester derives device and metric from the topic, writes the value
    to the database and only then acknowledges the message.
@@ -150,27 +150,40 @@ New modules should therefore publish at QoS 1.
 Measured in testing: a backlog of 71,000 messages was drained 6 seconds after
 reconnecting; a buffered message takes roughly 480 bytes of RAM in the broker.
 
-### TimescaleDB rather than InfluxDB or ClickHouse
+### TimescaleDB as the database
 
-- Mixed value types: devices deliver numbers, texts and booleans. A
-  relational schema separates them into typed columns; a database with one
-  fixed type per field needs workarounds.
-- Devices, metric definitions and measurements are in one database and can
-  be combined with ordinary joins. Analysis across devices depends on that.
-- Many small writes: the load is a few values per second, not large batches.
-- It is PostgreSQL: SQL, roles, backups and tools are the usual ones, and
-  Grafana has a data source for it.
+TimescaleDB is an extension of PostgreSQL. The project uses these of its
+properties:
 
-Household data is far smaller than the volumes specialised analytics
-databases are built for.
+- A hypertable next to ordinary tables. `measurements` is a hypertable,
+  partitioned by time into chunks of 7 days; `devices` and `metrics` are
+  ordinary tables in the same database. The view `v_measurements` joins them,
+  which is how a definition applies to values stored before it and how
+  values of different devices are compared.
+- Compression per chunk, segmented by device and metric. A module stores
+  every value in every pass, so most of the volume is repetition (see
+  [Old raw data is compressed](#old-raw-data-is-compressed)).
+- Continuous aggregates that include the not yet materialised edge
+  (`measurements_1h`, `consumption_1d`).
+- Typed columns. Devices deliver numbers, texts and booleans, and each has a
+  column of its type.
+- PostgreSQL's roles and its data source in Grafana: Grafana reads through a
+  role that may only `SELECT`.
 
-### A narrow measurements table with typed value columns
+### One row per value, one column per value type
 
 `measurements` has one row per value: time, metric, device, and exactly one
-filled value column (`value_num`, `value_str` or `value_bool`). A wide table
-with one column per quantity would be almost empty with hundreds of data
-points that vary by device and firmware, and it would need altering for every
-new data point.
+filled value column (`value_num`, `value_str` or `value_bool`). TigerData's
+documentation compares
+[wide, narrow and medium table layouts](https://www.tigerdata.com/docs/learn/data-model/wide-narrow-medium-tables);
+in its terms this is the medium layout, with one column per data type and
+the metric as a reference.
+
+A wide table with one column per quantity would be almost empty with
+hundreds of data points that vary by device and firmware, and it would need
+an `ALTER TABLE` for every new data point. With the medium layout a new data
+point is a new row in `metrics`. Its drawback is that something has to record
+which column a metric's values are in; that is `metrics.value_type`.
 
 ### No foreign key, no unique constraint on `measurements`
 
@@ -215,17 +228,23 @@ does not need it.
 ## The data model: devices, metrics, measurements
 
 ```
-devices                 metrics                        measurements (hypertable)
-───────                 ───────                        ────────────
-device_id   ◄─────┐     metric_id   ◄───────────┐      time
-type ────────────┐│     type                    └───── metric_id
-device_key       │└──────────────────────────────────── device_id
-name             │      native_key                     value_num
-category         └────► display_name                   value_str
-                        display_subname                value_bool
+devices                 metrics                     measurements (hypertable)
+───────                 ───────                     ────────────
+type ─────────────────► type                        time
+device_key              native_key                  value_num
+name                    display_name                value_str
+category                display_subname             value_bool
                         unit, category
                         value_type, aggregation
+                        metric_id  ◄─────────────── metric_id
+device_id  ◄─────────────────────────────────────── device_id
 ```
+
+None of the three arrows is a foreign key. `devices.type` and `metrics.type`
+use the same enum (`device_type`): the ingester takes the type of the device
+a message belongs to and looks the metric up by `(type, native_key)`.
+`measurements` references metric and device by id; the view `v_measurements`
+joins them.
 
 ### A metric belongs to the device type, not to the device
 

@@ -1,6 +1,7 @@
 -- =====================================================================
 -- home-historian  ->  TimescaleDB (PostgreSQL)
--- Time-series schema for energy devices (heat pump, PV, battery, meters)
+-- Time-series schema for the technical systems of a home (heating, PV,
+-- battery storage, meters)
 --
 -- Three levels:
 --   devices       one physical device

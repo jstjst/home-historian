@@ -1,12 +1,12 @@
 # home-historian
 
-A process historian for the energy devices in a single-family home: heat
-pump, PV inverter, battery storage, heat and electricity meters. It reads the
-devices at intervals of seconds to minutes, stores every raw value in a
-time-series database and makes the data available to SQL and Grafana.
+A process historian for the technical systems of a home, such as heating, PV,
+battery storage and meters. It reads the devices at intervals of seconds to
+minutes, stores every raw value in a time-series database and makes the data
+available to SQL and Grafana.
 
 A historian is the part of an industrial control system (SCADA) that records
-every process value of a plant. This project does the same for a house. It
+every process value of a plant. This project does the same for a home. It
 reads only and does not control any device.
 
 ```
@@ -21,27 +21,36 @@ reads only and does not control any device.
 
 ## Scope
 
-| | home-historian | Home Assistant | Energy management (evcc, OpenEMS, …) |
-|---|---|---|---|
-| Purpose | observe and analyse | automate the home | control energy flows |
-| Acts on devices | no, read-only | yes | yes |
-| Time resolution | as fast as the device delivers | event-driven | control cycle |
-| Raw values | kept permanently | detailed history for a limited time, then condensed statistics | mostly key figures |
-| Analysis | SQL on a normalised schema, Grafana | UI, statistics cards | UI |
-| Depth per device | internal diagnostics too (refrigerant circuit, sensor states, fault memory) | whatever the integration exposes | whatever control needs |
-
 The project is meant for questions about what a system did: how a heat pump
 cycles, when it defrosts, what the flow temperatures were over a winter, how
 much heat a buffer tank loses. That needs a fine time grid, unmodified raw
 values and a database in which devices and measured quantities can be joined.
 
-home-historian runs alongside the other systems and does not replace them.
-It needs no write access to any device.
+It was written for a single-family house and works the same way for a flat.
+Several flats or houses can be recorded in one installation within limits:
+the ingester tells devices apart by their topic path, and any number of
+devices of one type share their metric definitions. The database and Grafana
+do not separate them (see [Limitations](#limitations)).
 
-## Quick start with the simulator
+home-historian can run alongside home automation and energy management
+systems. It needs no write access to any device. The table shows how the
+purposes differ:
 
-No hardware is required: a simulator answers as a heat pump (Vitocal) and a
-battery storage unit (Vitocharge) on a virtual CAN bus.
+| | home-historian | Home Assistant | Energy management (evcc, OpenEMS, …) |
+|---|---|---|---|
+| Purpose | record and analyse | automate and operate the home | control energy flows |
+| Acts on devices | no | yes | yes |
+| Stored data | every raw value, permanently | recent history in detail, statistics for the long term | what control and its UI need |
+| Access to the data | SQL, Grafana | its own UI | its own UI |
+
+## Try it out with the simulated devices
+
+The stack runs without hardware. With the profiles of `.env.example`,
+[virtualE3](https://github.com/lgraf/vituale3) answers on a virtual CAN
+bus as two Viessmann E3 devices, a Vitocal heat pump and a Vitocharge battery
+storage, with fixed values from open3e's integration test. The open3e module
+reads three data points from them every 60 s, and the values pass through the
+broker and the ingester into the database.
 
 Requirements: Linux (for the virtual CAN bus; on macOS or Windows use a Linux
 VM) and Docker with the Compose plugin.
@@ -61,51 +70,42 @@ After about a minute:
 | MQTT explorer (broker host there: `mosquitto`) | <http://localhost:4000> |
 | pgAdmin | <http://localhost:5050> |
 
-An MQTT client outside the stack, such as the MQTT Explorer desktop app, can
-connect over WebSockets: protocol `ws://`, host `localhost`, port `9001`, no
-user, no TLS. The broker accepts any base path, so the app's default (`ws`)
-can stay.
-
 If no values appear: `docker compose ps` and
 `docker compose logs open3e ingest`.
 
-## Layout
+Further options:
 
-```
-compose.yml            one stack; profiles in .env decide what runs
-mosquitto/             MQTT broker with the timestamp plugin
-ingest/                MQTT -> database
-db/initdb/             schema and read-only role
-db/backfill_value_types.sql  move stored values after typing a metric
-db/enable_compression.sql    compression for a database created without it
-grafana/               data source and dashboards (provisioned)
-modules/
-  open3e/              Viessmann E3 devices over CAN (+ simulator in sim/)
-  vicare/              Viessmann ViCare cloud API
-  mbus/                wired M-Bus meters, e.g. heat meters (+ simulator in sim/)
-  senec/               SENEC.Home battery storage, local API
-docs/
-  architecture.md      decisions and their reasons, data model
-  modules.md           the contract for writing a module
-  clear-data.md        discard measurements and uncurated metrics
-```
+- Other E3 devices can be simulated from a capture of a real system
+  ([modules/open3e](modules/open3e/README.md#simulator)).
+- A second simulator answers as M-Bus heat meters behind a TCP port
+  ([modules/mbus](modules/mbus/README.md#simulator)).
+- The vicare and senec modules have no simulator.
 
-The core is the broker and the ingester. Neither contains anything specific
-to a device. A module is an independent program that reads one data source
-and publishes to MQTT. Supporting a new device means writing a module; the
-core stays unchanged. The contract is in [docs/modules.md](docs/modules.md).
+## Modules
 
-| Module | Source | Profile | Status |
-|---|---|---|---|
-| [open3e](modules/open3e/) | Viessmann E3 devices over the CAN bus (heat pump, battery) | `open3e` | in use on a Vitocal 250-A |
-| open3e simulator | virtual CAN bus with two E3 devices | `open3e-sim` | – |
-| [vicare](modules/vicare/) | Viessmann ViCare cloud API | `vicare` | in use with a Vitocal 250-A |
-| [mbus](modules/mbus/) | wired M-Bus meters over a serial port (Kamstrup MULTICAL 303 heat meters) | `mbus` | in use with four MULTICAL 303 |
-| mbus simulator | M-Bus meters behind a TCP port | `mbus-sim` | – |
-| [senec](modules/senec/) | SENEC.Home battery storage over its local API (`lala.cgi`) | `senec` | in use with a SENEC.Home V3 hybrid duo |
+The core is the broker ([Eclipse Mosquitto](https://mosquitto.org) with its
+[message-timestamp plugin](https://github.com/eclipse-mosquitto/mosquitto/tree/v2.0.20/plugins/message-timestamp))
+and the ingester. Neither contains anything specific to a device. A module is
+an independent program that reads one data source and publishes to MQTT.
+Supporting a new device means writing a module; the core stays unchanged.
+[docs/modules.md](docs/modules.md) describes what a module has to provide.
+
+| Module | Source | Uses | Profile | Status |
+|---|---|---|---|---|
+| [open3e](modules/open3e/) | Viessmann E3 devices over the CAN bus (heat pump, battery) | [open3e](https://github.com/open3e/open3e) | `open3e` | in use on a Vitocal 250-A |
+| open3e simulator | virtual CAN bus with two E3 devices | [virtualE3](https://github.com/lgraf/vituale3) | `open3e-sim` | – |
+| [vicare](modules/vicare/) | Viessmann ViCare cloud API | [PyViCare](https://github.com/openviess/PyViCare) | `vicare` | in use with a Vitocal 250-A |
+| [mbus](modules/mbus/) | wired M-Bus meters over a serial port (Kamstrup MULTICAL 303 heat meters) | [pyMeterBus](https://github.com/ganehag/pyMeterBus) | `mbus` | in use with four MULTICAL 303 |
+| mbus simulator | M-Bus meters behind a TCP port | a telegram from the tests of [wmbusmeters](https://github.com/wmbusmeters/wmbusmeters) | `mbus-sim` | – |
+| [senec](modules/senec/) | SENEC.Home battery storage over its local API (`lala.cgi`) | the API as described by [ha-senec-v3](https://github.com/marq24/ha-senec-v3) | `senec` | in use with a SENEC.Home V3 hybrid duo |
 
 Every module's README has the same sections: prerequisites, configuration,
 devices and metrics, values, behaviour, commissioning.
+
+Storage and analysis are [TimescaleDB](https://github.com/timescale/timescaledb)
+and [Grafana](https://grafana.com) (profile `db`). The profile `tools` adds
+[MQTT Explorer](https://github.com/Smeagolworms4/MQTT-Explorer) as a web
+application and [pgAdmin](https://www.pgadmin.org).
 
 ## Configuration
 
@@ -136,8 +136,7 @@ a definition is stored as a text-typed stub until it is curated; the
 dashboard "home-historian - Stubs" lists these.
 
 The display names in `metrics.de.sql` are German. `metrics.en.sql`, where a
-module has one, replaces them with English names and is applied by hand. The
-dashboard "home-historian - Overview" filters one panel by a German name.
+module has one, replaces them with English names and is applied by hand.
 
 ### Schema changes
 
@@ -164,7 +163,8 @@ the volume is discarded together with the measurements
 
 ## Limitations
 
-- No control and no alarms.
+- No control. Alerts can be set up with Grafana's alerting; the repository
+  contains no alert rules.
 - Outages: when the database is unreachable the broker buffers for up to
   7 days and delivers afterwards. Values a module sends at MQTT QoS 0
   (open3e) can be lost within a window of about two seconds if the ingester
@@ -176,23 +176,21 @@ the volume is discarded together with the measurements
   name, unit and category only through an entry in `metrics`. A metric typed
   `num` or `bool` after values were stored also needs
   [db/backfill_value_types.sql](db/backfill_value_types.sql).
-- Categories are an enum in the schema and cover the installation this
-  project was written for.
+- One installation per database. There is no column for a tenant or a
+  building, the categories (heating circuits 1 to 3, domestic hot water, PV,
+  battery, grid, …) are an enum that describes one installation, and the
+  Grafana role reads every row.
 
-## Licence and credits
+## Documentation
 
-GPL-3.0, see [LICENSE](LICENSE).
+- [docs/architecture.md](docs/architecture.md): the decisions and their
+  reasons, the data model.
+- [docs/modules.md](docs/modules.md): what a module has to provide.
+- [docs/clear-data.md](docs/clear-data.md): discarding measurements and
+  uncurated metrics.
 
-The project uses
-[open3e](https://github.com/open3e/open3e) (access to Viessmann E3 devices;
-the simulation data comes from its integration test),
-[virtualE3](https://github.com/philippoo66/vitualE3) (simulator),
-[PyViCare](https://github.com/openviess/PyViCare),
-[pyMeterBus](https://github.com/ganehag/pyMeterBus) (M-Bus decoding; the
-simulated telegram comes from the tests of
-[wmbusmeters](https://github.com/wmbusmeters/wmbusmeters)),
-[Eclipse Mosquitto](https://mosquitto.org),
-[TimescaleDB](https://www.timescale.com) and [Grafana](https://grafana.com).
-Viessmann, Vitocal, Vitocharge, ViCare, Kamstrup, MULTICAL and SENEC are
-trademarks of their owners. This project is not affiliated with the
-manufacturers.
+## Licence
+
+GPL-3.0, see [LICENSE](LICENSE). All trademarks are the property of their
+owners. This project is not affiliated with the manufacturers of the devices
+it reads.

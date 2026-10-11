@@ -7,28 +7,39 @@ done by the core.
 A module can be written in any language, or consist only of the
 configuration of an existing tool (like [open3e](../modules/open3e/)).
 
-## The contract
+## Interface to the core
 
 ### Topic
 
 ```
-<prefix>/<module>/<device>/<quantity>[/<sub-value>…]
+<prefix>/<device key>/<native key>
 ```
 
 | Part | Meaning |
 |---|---|
 | `<prefix>` | the stack's `MQTT_TOPIC_PREFIX` (default `historian`) |
-| `<module>/<device>` | becomes the `device_key` in the `devices` table; may have more than two segments |
-| the rest | becomes the metric's `native_key`, with `/` turned into `.` |
+| `<device key>` | identifies the device. One or more segments, the first one the module's name. It is the `device_key` in the `devices` table. |
+| `<native key>` | names the value. One or more segments. With `/` turned into `.` it is the metric's `native_key`. |
 
-Example: `historian/open3e/vitocal/268_FlowTemperatureSensor/SensorStatus/ID`
-belongs to the device `open3e/vitocal` and the metric
-`268_FlowTemperatureSensor.SensorStatus.ID`.
+The topic does not mark where the device key ends. The ingester compares the
+topic with the `device_key` of every row in `devices` and takes the longest
+one that matches; what follows is the native key. A module therefore
+publishes the complete device key in every topic, and the row in `devices`
+has to contain that path.
+
+| Module | Topic after the prefix | `device_key` | `native_key` |
+|---|---|---|---|
+| open3e | `open3e/vitocal/268_FlowTemperatureSensor/SensorStatus/ID` | `open3e/vitocal` | `268_FlowTemperatureSensor.SensorStatus.ID` |
+| mbus | `mbus/hc1/04_06` | `mbus/hc1` | `04_06` |
+| vicare | `vicare/<gatewayId>/<deviceId>/heating.circuits.1.heating.curve/slope` | `vicare/<gatewayId>/<deviceId>` | `heating.circuits.1.heating.curve.slope` |
+
+The vicare module's device key has three segments, because the API
+identifies a device by gateway and device id together.
 
 - One device is one physical unit. If a module reads several devices, each
-  gets a segment of its own.
-- The quantity contains no device name. The `native_key` has to be the same
-  for every device of a type, so that they share their metric definitions.
+  gets a device key of its own.
+- The native key contains no device name. It has to be the same for every
+  device of a type, so that they share their metric definitions.
 - Topic names have to stay stable. To the database, a renamed topic is a new
   metric.
 
@@ -127,6 +138,10 @@ every row in every module.
   often buffer without an error while the broker is away.
 - Recovery without intervention. The broker or the source may not be
   available at startup; the module retries and does not exit.
-- Few writes. No verbose logging in normal operation, no state files outside
-  a volume.
+- Few writes. The stack is meant to run on a Raspberry Pi, where every write
+  wears the SD card; for the same reason the broker saves its queue only
+  every 30 minutes and the mbus and senec modules keep their heartbeat file
+  on a tmpfs. So no verbose logging in normal operation. State files belong
+  on a volume: a file elsewhere in the container is lost when the container
+  is recreated.
 - Read access only. A module does not act on devices.
