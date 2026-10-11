@@ -71,16 +71,21 @@ competing source of truth.
 ### Master data
 
 The ingester drops messages from devices it does not know. Every module
-therefore ships a `seed.sql` containing:
+therefore ships a `seed.de.sql` containing:
 
 - its **devices** (`devices`: type, `device_key`, name),
 - optionally **curated metrics** (`metrics`) for the quantities it knows.
   Everything else the ingester creates as stubs.
 
 The file must be safe to run more than once (`ON CONFLICT … DO NOTHING`, or
-overwrite stubs only); see [modules/open3e/seed.sql](../modules/open3e/seed.sql)
+overwrite stubs only); see [modules/open3e/seed.de.sql](../modules/open3e/seed.de.sql)
 for a template. If the keys depend on the installation (serial numbers), the
 module's README describes which row to insert instead.
+
+The display names in the seeds (`display_name`, `display_subname`) are German,
+as in the installation they come from. A `seed.en.sql` next to the seed puts
+English names over them; it is applied by hand after the seed and is not
+complete for every module.
 
 A new **device type** is a new value in the `device_type` enum:
 
@@ -90,7 +95,7 @@ ALTER TYPE device_type ADD VALUE 'my_type';
 
 ## Adding a module
 
-1. A directory `modules/<name>/` with a `Dockerfile`, the program, `seed.sql`
+1. A directory `modules/<name>/` with a `Dockerfile`, the program, `seed.de.sql`
    and a short `README.md` (source, prerequisites, variables, status).
 2. A service in [compose.yml](../compose.yml), in the "Modules" section:
    - its own profile, `profiles: ["<name>"]`,

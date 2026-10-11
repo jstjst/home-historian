@@ -46,7 +46,7 @@ meters on the bus the answers collide.
 
 ## Registering the devices
 
-Names and addresses belong to the installation, so [seed.sql](seed.sql) only
+Names and addresses belong to the installation, so [seed.de.sql](seed.de.sql) only
 brings the metrics. Every name in `MBUS_METERS` needs a row; the module logs
 the keys at startup. The part of the installation a meter sits in goes on the
 device, because all meters share their metrics:
@@ -75,7 +75,7 @@ a quantity this is (`0x` current, `1x` maximum, `3x` during an error state,
 `4x`/`5x` stored at the target date), the VIF which quantity and at which
 resolution. A meter decides by its configuration what it sends; these are the
 records of two MULTICAL 303 with the standard datagram, as curated in
-[seed.sql](seed.sql):
+[seed.de.sql](seed.de.sql):
 
 | Key | Quantity | Payload unit |
 |---|---|---|
@@ -218,7 +218,7 @@ Run it once per meter, not in a loop (the battery). "decoded" is what
 pyMeterBus reads from the record, "published as" the key and payload the
 module sends; they differ where the module scales (E8 and E9). A `-` means the
 record carries no unit. Units of the published values are not in the message
-at all: they are master data. Compare the keys with [seed.sql](seed.sql) to
+at all: they are master data. Compare the keys with [seed.de.sql](seed.de.sql) to
 see which of your meter's records are curated.
 
 | Observation | Likely cause |
@@ -230,7 +230,7 @@ see which of your meter's records are curated.
 ### 5. Switch the module on
 
 1. Set `MBUS_METERS` and add `mbus` to `COMPOSE_PROFILES`.
-2. On a database that already exists, apply [seed.sql](seed.sql) by hand (the
+2. On a database that already exists, apply [seed.de.sql](seed.de.sql) by hand (the
    command is in its header); it is only loaded automatically on first start.
 3. Insert the device rows ([Registering the devices](#registering-the-devices))
    and `docker compose restart ingest`.

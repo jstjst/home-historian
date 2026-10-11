@@ -25,8 +25,8 @@ code of its own.
 
 Which control units exist is defined in
 [config/devices.json](config/devices.json) (name, CAN address). Every name
-there needs a row in `devices`; see [seed.sql](seed.sql), which also brings a
-few curated metrics.
+there needs a row in `devices`; see [seed.de.sql](seed.de.sql), which also brings the
+metrics of a Vitocal 250-A (device type `vitocal250a`).
 
 The service runs on the host network, because the CAN interface is a kernel
 interface of the host.
@@ -224,7 +224,7 @@ in every pass and its values are dropped.
    `OPEN3E_DIDS` (or [`all`](#reading-every-data-point)),
    and the `open3e-sim` profile removed
    (`docker compose rm -sf open3e-sim` before that, or it keeps running).
-2. Every key in `devices.json` needs a row in `devices`; [seed.sql](seed.sql)
+2. Every key in `devices.json` needs a row in `devices`; [seed.de.sql](seed.de.sql)
    brings `open3e/vitocal` and `open3e/vitocharge`. After adding one,
    `docker compose restart ingest`.
 3. `docker compose up -d open3e`, then `docker compose logs -f open3e`.

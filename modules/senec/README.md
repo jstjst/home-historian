@@ -66,7 +66,7 @@ HTTP; that was not tested, the tested unit redirects.
 
 ## Master data
 
-[seed.sql](seed.sql) adds the device type `senec_v3`, the device `senec/home`
+[seed.de.sql](seed.de.sql) adds the device type `senec_v3`, the device `senec/home`
 and curated metrics. It is loaded automatically on first start; on a database
 that already exists, apply it by hand (the command is in its header) and
 follow up with `docker compose restart ingest`, because the ingester reads
@@ -105,8 +105,10 @@ some are not: `BMS.SYSTEM_SOC` counts in tenths of a percent, `BMS.MAX_TEMP`
 and the `AMPACE` temperatures in tenths of a degree, the cell voltages in
 millivolts.
 
-The curated metrics of [seed.sql](seed.sql) are those whose meaning and unit
-were checked on the tested unit:
+The metrics in the first two blocks of [seed.de.sql](seed.de.sql) are those whose
+meaning and unit were checked on the tested unit; its last block names every
+other field the unit delivered, with names and units derived from the field
+names and not checked. The checked ones:
 
 | Keys | Quantity | Unit |
 |---|---|---|
@@ -164,7 +166,7 @@ within a minute.
 ## Switching it on
 
 1. Set `SENEC_URL` and add `senec` to `COMPOSE_PROFILES`.
-2. On a database that already exists, apply [seed.sql](seed.sql) by hand and
+2. On a database that already exists, apply [seed.de.sql](seed.de.sql) by hand and
    `docker compose restart ingest`.
 3. `docker compose up -d senec`. The log should say
    `… values published from N sections` on every pass.

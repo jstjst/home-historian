@@ -1,30 +1,12 @@
 -- =====================================================================
--- mbus module: master data
---   Metrics: curated definitions for the records of a Kamstrup MULTICAL 303
---   (type 'multical303'). One definition serves every meter of the type; which
---   circuit a meter sits in is the DEVICE's category.
---   native_key = "<DIF>_<VIF>", the record header in hex. The keys below are
---   those of two telegrams: the one in sim/fake_meter.py (a heat/cooling
---   meter) and one read from an installed heat meter. The VIF carries the
---   resolution, so energy and volume have a key per resolution (05/06 and
---   13/14); the payload is scaled to the same unit either way. A meter
---   configured differently sends other records; the ingester creates those
---   as stubs.
---   E8 and E9 (volume * inlet / outlet temperature) arrive in m^3 * degree
---   Celsius whatever the meter's resolution: the module scales them from the
---   volume record of the same telegram. Their increase divided by the
---   increase of the volume is the flow-weighted mean temperature.
---   Units are those of the payload (pyMeterBus scales to Wh, m^3, W, seconds),
---   not those on the meter's display.
+-- mbus module: English display names
+--   seed.de.sql carries German display names. This file puts the English ones
+--   over them: apply it after seed.de.sql, and again whenever seed.de.sql was
+--   applied again. It changes display_name and display_subname only, also
+--   on metrics curated by hand.
 --
---   Devices: none here. Names and addresses belong to the installation, see
---   the README for the rows to insert.
---
---   Loaded automatically on an empty database volume. Later, by hand:
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/mbus/seed.sql
---   Running it again does no harm. Metrics curated by hand are left alone;
---   only stubs are overwritten.
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/mbus/seed.en.sql
 -- =====================================================================
 
 -- DIF: 0x = current value, 1x = maximum, 3x = value during error state,
@@ -59,9 +41,4 @@ INSERT INTO metrics (type, native_key, display_name, display_subname, unit, cate
   ('multical303', '42_6C',   'Target date',             'state',       NULL,         NULL, 'str', 'gauge')
 ON CONFLICT (type, native_key) DO UPDATE SET
     display_name    = EXCLUDED.display_name,
-    display_subname = EXCLUDED.display_subname,
-    unit            = EXCLUDED.unit,
-    category        = EXCLUDED.category,
-    value_type      = EXCLUDED.value_type,
-    aggregation     = EXCLUDED.aggregation
-WHERE metrics.display_name = metrics.native_key;   -- overwrite stubs only
+    display_subname = EXCLUDED.display_subname;

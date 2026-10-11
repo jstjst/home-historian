@@ -62,6 +62,10 @@ does the analysis. Observe and analyse, never control.
   `measurements_1h`, `consumption_1d`, `metrics`, `devices`, `native_key`,
   `display_name`, `display_subname`, `category`, `aggregation`. Categories:
   `hc1`–`hc3` (heating circuits), `dhw`, `pv`, `battery`, `grid`, ….
+- **The one exception: `display_name` and `display_subname` in the modules'
+  `seed.de.sql` are German** (HK1 Vorlauftemperatur; Ist/Soll/Status/Min/Max),
+  as are the names of example devices. `seed.en.sql` holds English names as
+  an overlay where they exist; it is not maintained further.
 
 ## Python style
 
@@ -80,7 +84,8 @@ does the analysis. Observe and analyse, never control.
   payload, one value per topic. `<module>/<device>` is the `device_key`, the
   rest is the `native_key` (`/` → `.`). One device = one physical unit; no
   device name inside the `native_key`.
-- **Modules ship their master data as `seed.sql`** (idempotent). The schema
+- **Modules ship their master data as `seed.de.sql`** (idempotent, German
+  display names). The schema
   itself creates no devices and no metrics.
 - Every module has its own Compose profile and its own variable prefix
   (`OPEN3E_`, `VICARE_`, `MBUS_`, `SENEC_`).

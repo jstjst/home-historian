@@ -33,8 +33,10 @@ if your own quota allows it.
 
 ## Registering the device
 
-Gateway and device id depend on the installation, so there is no `seed.sql`.
-On its first pass the module logs which row is needed:
+Gateway and device id depend on the installation, so [seed.de.sql](seed.de.sql)
+only brings the device type `vitocal250a` and curated metrics for a
+Vitocal 250-A (German display names, no English ones yet). On its first pass
+the module logs which row is needed:
 
 ```
 Topics under historian/vicare/<gatewayId>/<deviceId>/ -- device_key for the devices table: that path without the stack prefix (e.g. 'vicare/<gatewayId>/<deviceId>')
@@ -42,7 +44,7 @@ Topics under historian/vicare/<gatewayId>/<deviceId>/ -- device_key for the devi
 
 ```sql
 INSERT INTO devices (type, device_key, name)
-VALUES ('vitocal', 'vicare/<gatewayId>/<deviceId>', 'Heat pump (ViCare)');
+VALUES ('vitocal250a', 'vicare/<gatewayId>/<deviceId>', 'Heat pump (ViCare)');
 ```
 
 The ingester reads the list of devices at startup, so follow up with

@@ -1,39 +1,13 @@
 -- =====================================================================
--- senec module: master data
---   Device type: 'senec_v3', added to the enum here so that the schema
---   itself stays free of it. ALTER TYPE ... ADD VALUE must be committed
---   before the value is used: run this file as it is (psql commits every
---   statement), not inside a transaction.
+-- senec module: English display names
+--   seed.de.sql carries German display names. This file puts the English ones
+--   over them: apply it after seed.de.sql, and again whenever seed.de.sql was
+--   applied again. It changes display_name and display_subname only, also
+--   on metrics curated by hand.
 --
---   Device: 'senec/home', the module's default name (SENEC_DEVICE). Without
---   this row the ingester drops the module's messages.
---
---   Metrics: curated definitions for the values whose meaning and unit were
---   checked on a SENEC.Home V3 hybrid duo LFP (NPU image 2608). The module
---   publishes every field of every section, close to a thousand values; the
---   ingester creates all others as stubs, typed as text until curated.
---   native_key = "<SECTION>.<FIELD>[.<index>]", index from 0 as the unit
---   sends its arrays. Values are the unit's own, unscaled.
---
---   Signs, checked against the unit's own figures (house = PV + grid -
---   battery): grid power is positive for import and negative for export,
---   battery power and current are positive while charging and negative while
---   discharging.
---   The PV string values were read at night (voltage only); their units are
---   those of the unit's web interface.
---
---   Loaded automatically on an empty database volume. Later, by hand:
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/senec/seed.sql
---   Running it again does no harm. Metrics curated by hand are left alone;
---   only stubs are overwritten.
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/senec/seed.en.sql
 -- =====================================================================
-
-ALTER TYPE device_type ADD VALUE IF NOT EXISTS 'senec_v3';
-
-INSERT INTO devices (type, device_key, name) VALUES
-  ('senec_v3', 'senec/home', 'SENEC.Home V3')
-ON CONFLICT (device_key) DO NOTHING;
 
 -- ENERGY: the figures of the unit's overview page. PM1OBJ1: the meter at the
 -- grid connection point. PV1: the PV inputs. TEMPMEASURE: the unit itself.
@@ -74,12 +48,7 @@ INSERT INTO metrics (type, native_key, display_name, display_subname, unit, cate
   ('senec_v3', 'TEMPMEASURE.MCU_TEMP',                 'Controller temperature',  'actual', 'celsius',   NULL,      'num', 'gauge')
 ON CONFLICT (type, native_key) DO UPDATE SET
     display_name    = EXCLUDED.display_name,
-    display_subname = EXCLUDED.display_subname,
-    unit            = EXCLUDED.unit,
-    category        = EXCLUDED.category,
-    value_type      = EXCLUDED.value_type,
-    aggregation     = EXCLUDED.aggregation
-WHERE metrics.display_name = metrics.native_key;   -- overwrite stubs only
+    display_subname = EXCLUDED.display_subname;
 
 -- BMS: the battery modules. The unit has four slots, A to D; index 0 of a
 -- per-module array is module A. Every slot gets its rows, fitted or not: per
@@ -111,9 +80,4 @@ SELECT 'senec_v3'::device_type, format('BMS.CELL_TEMPERATURES_MODULE_%s.%s', chr
 FROM generate_series(0, 3) AS m, generate_series(0, 2) AS c
 ON CONFLICT (type, native_key) DO UPDATE SET
     display_name    = EXCLUDED.display_name,
-    display_subname = EXCLUDED.display_subname,
-    unit            = EXCLUDED.unit,
-    category        = EXCLUDED.category,
-    value_type      = EXCLUDED.value_type,
-    aggregation     = EXCLUDED.aggregation
-WHERE metrics.display_name = metrics.native_key;   -- overwrite stubs only
+    display_subname = EXCLUDED.display_subname;

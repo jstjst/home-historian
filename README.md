@@ -120,9 +120,11 @@ switches that matter most:
 
 **Devices have to be registered.** The ingester only stores values from
 devices listed in the `devices` table. Modules ship their master data as a
-`seed.sql`; those of the open3e, mbus and senec modules are loaded
-automatically on first start. Where the devices depend on the installation
-(vicare, mbus), the module's README names the rows to insert.
+`seed.de.sql`, loaded automatically on first start. Where the devices depend on
+the installation (vicare, mbus), the seed only brings the metrics and the
+module's README names the rows to insert. The display names in the seeds are
+German; a module's `seed.en.sql`, where there is one, puts English names over
+them.
 
 **The schema is only applied to an empty volume.** The files under
 `db/initdb/` run once, when the database starts for the first time. Later

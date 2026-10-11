@@ -211,7 +211,7 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Min/max band: HC1 flow temperature",
+      "title": "Min/max band: flow temperature",
       "description": "Uses display_subname (the unified role of a value), not the raw native_key, so the same query works for any device.",
       "gridPos": {
         "h": 9,
@@ -228,7 +228,7 @@
           "refId": "A",
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "SELECT $__timeGroup(time, $__interval) AS \"time\", avg(value_num) FILTER (WHERE display_subname = 'actual') AS \"Actual\", min(value_num) FILTER (WHERE display_subname = 'min') AS \"Minimum\", max(value_num) FILTER (WHERE display_subname = 'max') AS \"Maximum\" FROM v_measurements WHERE $__timeFilter(time) AND display_name = 'HC1 flow temperature' GROUP BY 1 ORDER BY 1;"
+          "rawSql": "SELECT $__timeGroup(time, $__interval) AS \"time\", avg(value_num) FILTER (WHERE display_subname = 'Ist') AS \"Actual\", min(value_num) FILTER (WHERE display_subname = 'Min') AS \"Minimum\", max(value_num) FILTER (WHERE display_subname = 'Max') AS \"Maximum\" FROM v_measurements WHERE $__timeFilter(time) AND display_name = 'Vorlauftemperatur Heizwasser' GROUP BY 1 ORDER BY 1;"
         }
       ],
       "fieldConfig": {

@@ -93,9 +93,10 @@ services:
     volumes:
       - timescale_data:/var/lib/postgresql/data
       - ./db/initdb/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./modules/open3e/seed.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
-      - ./modules/mbus/seed.sql:/docker-entrypoint-initdb.d/11_module_mbus.sql:ro
-      - ./modules/senec/seed.sql:/docker-entrypoint-initdb.d/12_module_senec.sql:ro
+      - ./modules/open3e/seed.de.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
+      - ./modules/mbus/seed.de.sql:/docker-entrypoint-initdb.d/11_module_mbus.sql:ro
+      - ./modules/senec/seed.de.sql:/docker-entrypoint-initdb.d/12_module_senec.sql:ro
+      - ./modules/vicare/seed.de.sql:/docker-entrypoint-initdb.d/13_module_vicare.sql:ro
       - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]

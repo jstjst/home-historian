@@ -140,7 +140,7 @@ COMMENT ON TABLE measurements IS 'Time series. metric_id -> metrics, device_id -
 -- Master data
 --   This schema creates NO devices and NO metrics.
 --   * devices have to be entered: without a matching device_key the ingester
---     drops a device's messages. Modules ship theirs as modules/<name>/seed.sql.
+--     drops a device's messages. Modules ship theirs as modules/<name>/seed.de.sql.
 --   * metrics are created by the ingester as stubs the first time a key
 --     appears (display_name = native_key, no category, value_type 'str').
 --     Giving them a name, unit, category and type is manual work.
