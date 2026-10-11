@@ -1,10 +1,10 @@
 # Clearing the data
 
-How to discard **all measurements** and **all uncurated metrics** in a running
+How to discard all measurements and all uncurated metrics in a running
 installation, while the schema, the devices, the curated metrics and Grafana
 stay as they are.
 
-**There is no undo.** If the measurements might still be wanted, back the
+This cannot be undone. If the measurements might still be needed, back the
 database up first.
 
 | | |
@@ -21,7 +21,7 @@ the broker's buffer and the ViCare token go with it.
 All `psql` calls below run as the database owner. With the database on another
 host, run the same statements with `psql` against that database.
 
-**1. Look at what would be deleted.** A stub is recognised by its name alone.
+**1. Look at what would be deleted.** A stub is recognised by its name only.
 A metric that was given a unit or a type but still carries its `native_key` as
 `display_name` counts as a stub and is deleted. Give it a `display_name` first
 if it should stay.
@@ -63,32 +63,32 @@ docker compose start ingest
 
 ## What to expect afterwards
 
-- **The database does not stay empty.** The values the broker buffered while
+- The database does not stay empty. The values the broker buffered while
   the ingester was stopped are written as soon as it is back, with their
   original timestamps.
-- **Stubs of quantities that are still published come back**, with a new
+- Stubs of quantities that are still published come back, with a new
   `metric_id`, on their first value. Deleting stubs only gets rid of keys that
   nobody publishes any more (a retired device, a narrower selection of data
-  points, renamed topics). To keep a quantity out of the database for good,
+  points, renamed topics). To keep a quantity out of the database permanently,
   stop publishing it in the module.
-- **Dashboards show the new values at once.** Truncating an aggregate resets
+- Dashboards show the new values at once. Truncating an aggregate resets
   its watermark, so until the next refresh it reads everything from the raw
   data.
 
 ## Why the steps are what they are
 
-- **The ingester has to be stopped.** It caches `(type, native_key) →
+- The ingester has to be stopped. It caches `(type, native_key) →
   metric_id` for up to an hour (`INGEST_METRIC_CACHE_SECONDS`). If a stub is
   deleted underneath it, it keeps writing rows with the old `metric_id`. There
   is no foreign key to stop that, and those rows show up in `v_measurements`
   without a name. Restarting the ingester afterwards does not repair them.
-- **The aggregates are cleared separately.** `TRUNCATE measurements` leaves
+- The aggregates are cleared separately. `TRUNCATE measurements` leaves
   what is already materialised in `measurements_1h` and `consumption_1d`
   untouched, and the refresh policies only look back 3 and 7 days. Older
-  buckets would stay on the dashboards for good.
-- **`TRUNCATE`, not `DELETE`, for the measurements.** It drops the chunks, so
-  the disk space is free immediately.
-- **Measurements and stubs go together.** Deleting stubs while keeping their
-  measurements would leave rows without a metric, as above.
+  buckets would stay on the dashboards permanently.
+- The measurements are removed with `TRUNCATE`, not `DELETE`. It drops the
+  chunks, so the disk space is free immediately.
+- Measurements and stubs are removed together. Deleting stubs while keeping
+  their measurements would leave rows without a metric, as above.
 
 Checked against TimescaleDB 2.17.2, the version in `compose.yml`.

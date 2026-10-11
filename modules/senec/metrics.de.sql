@@ -1,47 +1,26 @@
 -- =====================================================================
--- senec module: master data
---   Device type: 'senec_v3', added to the enum here so that the schema
---   itself stays free of it. ALTER TYPE ... ADD VALUE must be committed
---   before the value is used: run this file as it is (psql commits every
---   statement), not inside a transaction.
+-- senec module: metric definitions, German display names
 --
---   Device: 'senec/home', the module's default name (SENEC_DEVICE). Without
---   this row the ingester drops the module's messages.
+--   Type 'senec_v3'. native_key is <SECTION>.<FIELD>[.<index>], the index
+--   counted from 0 as in the unit's arrays. The rows are the values a
+--   SENEC.Home V3 hybrid duo LFP (NPU image 2608) delivered with
+--   SENEC_SECTIONS=all. Values are stored as the unit sends them, unscaled.
 --
---   Metrics: curated definitions for the values whose meaning and unit were
---   checked on a SENEC.Home V3 hybrid duo LFP (NPU image 2608). The module
---   publishes every field of every section, close to a thousand values; the
---   last block below names the rest of them, unchecked. What a unit sends
---   beyond that the ingester creates as stubs, typed as text until curated.
---   native_key = "<SECTION>.<FIELD>[.<index>]", index from 0 as the unit
---   sends its arrays. Values are the unit's own, unscaled.
+--   Grid power is positive for import, battery power and current are
+--   positive while charging.
 --
---   Signs, checked against the unit's own figures (house = PV + grid -
---   battery): grid power is positive for import and negative for export,
---   battery power and current are positive while charging and negative while
---   discharging.
---   The PV string values were read at night (voltage only); their units are
---   those of the unit's web interface.
---
---   Display names are German, as in the installation they come from.
---   seed.en.sql puts English names over them.
---
---   Loaded automatically on an empty database volume. Later, by hand:
+--   Loaded on the first start of the database, after devices.sql. On an
+--   existing database (repeatable, only stubs are overwritten):
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/senec/seed.de.sql
---   Running it again does no harm. Metrics curated by hand are left alone;
---   only stubs are overwritten.
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/senec/metrics.de.sql
+--   A metric that already has values and becomes 'num' or 'bool' also
+--   needs db/backfill_value_types.sql.
 -- =====================================================================
 
-ALTER TYPE device_type ADD VALUE IF NOT EXISTS 'senec_v3';
-
-INSERT INTO devices (type, device_key, name) VALUES
-  ('senec_v3', 'senec/home', 'SENEC.Home V3 hybrid duo LFP')
-ON CONFLICT (device_key) DO NOTHING;
-
--- ENERGY: the figures of the unit's overview page. PM1OBJ1: the meter at the
--- grid connection point. PV1: the PV inputs. TEMPMEASURE: the unit itself.
 INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
+  -- Meaning and unit checked on the unit. ENERGY: the figures of the unit's
+  -- overview page. PM1OBJ1: the meter at the grid connection point. PV1: the
+  -- PV inputs. TEMPMEASURE: the unit itself.
   ('senec_v3', 'ENERGY.GUI_HOUSE_POW',                 'Hausverbrauch',         'Ist',    'watt',      NULL,      'num', 'gauge'),
   ('senec_v3', 'ENERGY.GUI_GRID_POW',                  'Netzleistung',          'Ist',    'watt',      'grid',    'num', 'gauge'),
   ('senec_v3', 'ENERGY.GUI_INVERTER_POWER',            'PV-Leistung',           'Ist',    'watt',      'pv',      'num', 'gauge'),
@@ -75,67 +54,128 @@ INSERT INTO metrics (type, native_key, display_name, display_subname, unit, cate
   ('senec_v3', 'PV1.MPP_CUR.2',                        'PV-String Strom',       'MPP 3',  'ampere',    'pv',      'num', 'gauge'),
   ('senec_v3', 'TEMPMEASURE.BATTERY_TEMP',             'Batterietemperatur',    'Ist',    'celsius',   'battery', 'num', 'gauge'),
   ('senec_v3', 'TEMPMEASURE.CASE_TEMP',                'Gehäusetemperatur',     'Ist',    'celsius',   NULL,      'num', 'gauge'),
-  ('senec_v3', 'TEMPMEASURE.MCU_TEMP',                 'Controller-Temperatur', 'Ist',    'celsius',   NULL,      'num', 'gauge')
-ON CONFLICT (type, native_key) DO UPDATE SET
-    display_name    = EXCLUDED.display_name,
-    display_subname = EXCLUDED.display_subname,
-    unit            = EXCLUDED.unit,
-    category        = EXCLUDED.category,
-    value_type      = EXCLUDED.value_type,
-    aggregation     = EXCLUDED.aggregation
-WHERE metrics.display_name = metrics.native_key;   -- overwrite stubs only
-
--- BMS: the battery modules. The unit has four slots, A to D; index 0 of a
--- per-module array is module A. Every slot gets its rows, fitted or not: per
--- module, per cell (16 voltages) and per temperature sensor (3).
-INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation)
-SELECT 'senec_v3'::device_type, format('BMS.%s.%s', f.field, m), f.name, format(f.subname, chr(65 + m)),
-       f.unit, 'battery'::category, 'num'::val_kind, f.aggregation::agg_kind
-FROM generate_series(0, 3) AS m,
-     (VALUES
-        ('VOLTAGE',          'Batteriemodul Spannung',         'Modul %s',     'volt',      'gauge'),
-        ('CURRENT',          'Batteriemodul Strom',            'Modul %s',     'ampere',    'gauge'),
-        ('SOC',              'Batteriemodul Ladezustand',      'Modul %s',     'percent',   'gauge'),
-        ('SOH',              'Batteriemodul Gesundheitszustand', 'Modul %s',     'percent',   'gauge'),
-        ('CYCLES',           'Batteriemodul Zyklen',           'Modul %s',     NULL,        'counter'),
-        ('MAX_CELL_VOLTAGE', 'Batteriemodul Zellspannung',     'Modul %s Max', 'millivolt', 'gauge'),
-        ('MIN_CELL_VOLTAGE', 'Batteriemodul Zellspannung',     'Modul %s Min', 'millivolt', 'gauge'),
-        ('TEMP_MAX',         'Batteriemodul Temperatur',       'Modul %s Max', 'celsius',   'gauge'),
-        ('TEMP_MIN',         'Batteriemodul Temperatur',       'Modul %s Min', 'celsius',   'gauge')
-     ) AS f(field, name, subname, unit, aggregation)
-UNION ALL
-SELECT 'senec_v3'::device_type, format('BMS.CELL_VOLTAGES_MODULE_%s.%s', chr(65 + m), c),
-       'Batterie Zellspannung', format('Modul %s Zelle %s', chr(65 + m), c + 1),
-       'millivolt', 'battery'::category, 'num'::val_kind, 'gauge'::agg_kind
-FROM generate_series(0, 3) AS m, generate_series(0, 15) AS c
-UNION ALL
-SELECT 'senec_v3'::device_type, format('BMS.CELL_TEMPERATURES_MODULE_%s.%s', chr(65 + m), c),
-       'Batterie Zelltemperatur', format('Modul %s Sensor %s', chr(65 + m), c + 1),
-       'celsius', 'battery'::category, 'num'::val_kind, 'gauge'::agg_kind
-FROM generate_series(0, 3) AS m, generate_series(0, 2) AS c
-ON CONFLICT (type, native_key) DO UPDATE SET
-    display_name    = EXCLUDED.display_name,
-    display_subname = EXCLUDED.display_subname,
-    unit            = EXCLUDED.unit,
-    category        = EXCLUDED.category,
-    value_type      = EXCLUDED.value_type,
-    aggregation     = EXCLUDED.aggregation
-WHERE metrics.display_name = metrics.native_key;   -- overwrite stubs only
-
--- Everything else the unit delivered when all sections were read
--- (SENEC_SECTIONS=all), 835 values. Only value_type is checked against
--- stored values: 'num' where everything stored within three days was a
--- number. Names, units and categories are derived from the unit's field
--- names and NOT checked; a unit is only given where the name states it.
--- Where the name states none, a few units follow the ioBroker adapter's
--- list (nobl/ioBroker.senec, lib/state_attr.js); that list agrees with the
--- units here for 108 fields.
--- Without a unit on purpose, because the unit sends them in tenths and
--- values are stored unscaled: the temperatures AMPACE.CELL_TEMPERATURES_*,
--- AMPACE.MODULE_MAX_TEMP / MODULE_MIN_TEMP, BMS.MAX_TEMP / MIN_TEMP (0.1
--- degree Celsius, seen 181 to 275) and BMS.SYSTEM_SOC / SYSTEM_SOH (0.1
--- percent, seen 0 to 1000).
-INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
+  ('senec_v3', 'TEMPMEASURE.MCU_TEMP',                 'Controller-Temperatur', 'Ist',    'celsius',   NULL,      'num', 'gauge'),
+  -- BMS: the battery modules, checked likewise. The unit has four slots,
+  -- A to D; index 0 of a per-module array is module A.
+  ('senec_v3', 'BMS.VOLTAGE.0',                    'Batteriemodul Spannung',           'Modul A',          'volt',      'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.VOLTAGE.1',                    'Batteriemodul Spannung',           'Modul B',          'volt',      'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.VOLTAGE.2',                    'Batteriemodul Spannung',           'Modul C',          'volt',      'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.VOLTAGE.3',                    'Batteriemodul Spannung',           'Modul D',          'volt',      'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CURRENT.0',                    'Batteriemodul Strom',              'Modul A',          'ampere',    'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CURRENT.1',                    'Batteriemodul Strom',              'Modul B',          'ampere',    'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CURRENT.2',                    'Batteriemodul Strom',              'Modul C',          'ampere',    'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CURRENT.3',                    'Batteriemodul Strom',              'Modul D',          'ampere',    'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOC.0',                        'Batteriemodul Ladezustand',        'Modul A',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOC.1',                        'Batteriemodul Ladezustand',        'Modul B',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOC.2',                        'Batteriemodul Ladezustand',        'Modul C',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOC.3',                        'Batteriemodul Ladezustand',        'Modul D',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOH.0',                        'Batteriemodul Gesundheitszustand', 'Modul A',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOH.1',                        'Batteriemodul Gesundheitszustand', 'Modul B',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOH.2',                        'Batteriemodul Gesundheitszustand', 'Modul C',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.SOH.3',                        'Batteriemodul Gesundheitszustand', 'Modul D',          'percent',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CYCLES.0',                     'Batteriemodul Zyklen',             'Modul A',          NULL,        'battery', 'num', 'counter'),
+  ('senec_v3', 'BMS.CYCLES.1',                     'Batteriemodul Zyklen',             'Modul B',          NULL,        'battery', 'num', 'counter'),
+  ('senec_v3', 'BMS.CYCLES.2',                     'Batteriemodul Zyklen',             'Modul C',          NULL,        'battery', 'num', 'counter'),
+  ('senec_v3', 'BMS.CYCLES.3',                     'Batteriemodul Zyklen',             'Modul D',          NULL,        'battery', 'num', 'counter'),
+  ('senec_v3', 'BMS.MAX_CELL_VOLTAGE.0',           'Batteriemodul Zellspannung',       'Modul A Max',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MAX_CELL_VOLTAGE.1',           'Batteriemodul Zellspannung',       'Modul B Max',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MAX_CELL_VOLTAGE.2',           'Batteriemodul Zellspannung',       'Modul C Max',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MAX_CELL_VOLTAGE.3',           'Batteriemodul Zellspannung',       'Modul D Max',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MIN_CELL_VOLTAGE.0',           'Batteriemodul Zellspannung',       'Modul A Min',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MIN_CELL_VOLTAGE.1',           'Batteriemodul Zellspannung',       'Modul B Min',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MIN_CELL_VOLTAGE.2',           'Batteriemodul Zellspannung',       'Modul C Min',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.MIN_CELL_VOLTAGE.3',           'Batteriemodul Zellspannung',       'Modul D Min',      'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MAX.0',                   'Batteriemodul Temperatur',         'Modul A Max',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MAX.1',                   'Batteriemodul Temperatur',         'Modul B Max',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MAX.2',                   'Batteriemodul Temperatur',         'Modul C Max',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MAX.3',                   'Batteriemodul Temperatur',         'Modul D Max',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MIN.0',                   'Batteriemodul Temperatur',         'Modul A Min',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MIN.1',                   'Batteriemodul Temperatur',         'Modul B Min',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MIN.2',                   'Batteriemodul Temperatur',         'Modul C Min',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.TEMP_MIN.3',                   'Batteriemodul Temperatur',         'Modul D Min',      'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.0',     'Batterie Zellspannung',            'Modul A Zelle 1',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.1',     'Batterie Zellspannung',            'Modul A Zelle 2',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.2',     'Batterie Zellspannung',            'Modul A Zelle 3',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.3',     'Batterie Zellspannung',            'Modul A Zelle 4',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.4',     'Batterie Zellspannung',            'Modul A Zelle 5',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.5',     'Batterie Zellspannung',            'Modul A Zelle 6',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.6',     'Batterie Zellspannung',            'Modul A Zelle 7',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.7',     'Batterie Zellspannung',            'Modul A Zelle 8',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.8',     'Batterie Zellspannung',            'Modul A Zelle 9',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.9',     'Batterie Zellspannung',            'Modul A Zelle 10', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.10',    'Batterie Zellspannung',            'Modul A Zelle 11', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.11',    'Batterie Zellspannung',            'Modul A Zelle 12', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.12',    'Batterie Zellspannung',            'Modul A Zelle 13', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.13',    'Batterie Zellspannung',            'Modul A Zelle 14', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.14',    'Batterie Zellspannung',            'Modul A Zelle 15', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_A.15',    'Batterie Zellspannung',            'Modul A Zelle 16', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.0',     'Batterie Zellspannung',            'Modul B Zelle 1',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.1',     'Batterie Zellspannung',            'Modul B Zelle 2',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.2',     'Batterie Zellspannung',            'Modul B Zelle 3',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.3',     'Batterie Zellspannung',            'Modul B Zelle 4',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.4',     'Batterie Zellspannung',            'Modul B Zelle 5',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.5',     'Batterie Zellspannung',            'Modul B Zelle 6',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.6',     'Batterie Zellspannung',            'Modul B Zelle 7',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.7',     'Batterie Zellspannung',            'Modul B Zelle 8',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.8',     'Batterie Zellspannung',            'Modul B Zelle 9',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.9',     'Batterie Zellspannung',            'Modul B Zelle 10', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.10',    'Batterie Zellspannung',            'Modul B Zelle 11', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.11',    'Batterie Zellspannung',            'Modul B Zelle 12', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.12',    'Batterie Zellspannung',            'Modul B Zelle 13', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.13',    'Batterie Zellspannung',            'Modul B Zelle 14', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.14',    'Batterie Zellspannung',            'Modul B Zelle 15', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_B.15',    'Batterie Zellspannung',            'Modul B Zelle 16', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.0',     'Batterie Zellspannung',            'Modul C Zelle 1',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.1',     'Batterie Zellspannung',            'Modul C Zelle 2',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.2',     'Batterie Zellspannung',            'Modul C Zelle 3',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.3',     'Batterie Zellspannung',            'Modul C Zelle 4',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.4',     'Batterie Zellspannung',            'Modul C Zelle 5',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.5',     'Batterie Zellspannung',            'Modul C Zelle 6',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.6',     'Batterie Zellspannung',            'Modul C Zelle 7',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.7',     'Batterie Zellspannung',            'Modul C Zelle 8',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.8',     'Batterie Zellspannung',            'Modul C Zelle 9',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.9',     'Batterie Zellspannung',            'Modul C Zelle 10', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.10',    'Batterie Zellspannung',            'Modul C Zelle 11', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.11',    'Batterie Zellspannung',            'Modul C Zelle 12', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.12',    'Batterie Zellspannung',            'Modul C Zelle 13', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.13',    'Batterie Zellspannung',            'Modul C Zelle 14', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.14',    'Batterie Zellspannung',            'Modul C Zelle 15', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_C.15',    'Batterie Zellspannung',            'Modul C Zelle 16', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.0',     'Batterie Zellspannung',            'Modul D Zelle 1',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.1',     'Batterie Zellspannung',            'Modul D Zelle 2',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.2',     'Batterie Zellspannung',            'Modul D Zelle 3',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.3',     'Batterie Zellspannung',            'Modul D Zelle 4',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.4',     'Batterie Zellspannung',            'Modul D Zelle 5',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.5',     'Batterie Zellspannung',            'Modul D Zelle 6',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.6',     'Batterie Zellspannung',            'Modul D Zelle 7',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.7',     'Batterie Zellspannung',            'Modul D Zelle 8',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.8',     'Batterie Zellspannung',            'Modul D Zelle 9',  'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.9',     'Batterie Zellspannung',            'Modul D Zelle 10', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.10',    'Batterie Zellspannung',            'Modul D Zelle 11', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.11',    'Batterie Zellspannung',            'Modul D Zelle 12', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.12',    'Batterie Zellspannung',            'Modul D Zelle 13', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.13',    'Batterie Zellspannung',            'Modul D Zelle 14', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.14',    'Batterie Zellspannung',            'Modul D Zelle 15', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_VOLTAGES_MODULE_D.15',    'Batterie Zellspannung',            'Modul D Zelle 16', 'millivolt', 'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_A.0', 'Batterie Zelltemperatur',          'Modul A Sensor 1', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_A.1', 'Batterie Zelltemperatur',          'Modul A Sensor 2', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_A.2', 'Batterie Zelltemperatur',          'Modul A Sensor 3', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_B.0', 'Batterie Zelltemperatur',          'Modul B Sensor 1', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_B.1', 'Batterie Zelltemperatur',          'Modul B Sensor 2', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_B.2', 'Batterie Zelltemperatur',          'Modul B Sensor 3', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_C.0', 'Batterie Zelltemperatur',          'Modul C Sensor 1', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_C.1', 'Batterie Zelltemperatur',          'Modul C Sensor 2', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_C.2', 'Batterie Zelltemperatur',          'Modul C Sensor 3', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_D.0', 'Batterie Zelltemperatur',          'Modul D Sensor 1', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_D.1', 'Batterie Zelltemperatur',          'Modul D Sensor 2', 'celsius',   'battery', 'num', 'gauge'),
+  ('senec_v3', 'BMS.CELL_TEMPERATURES_MODULE_D.2', 'Batterie Zelltemperatur',          'Modul D Sensor 3', 'celsius',   'battery', 'num', 'gauge'),
+  -- Every other field. value_type is checked against stored values. Names,
+  -- units and categories are derived from the field names and are not
+  -- checked. A unit is given where the name states it; a few follow the
+  -- list of the ioBroker adapter (nobl/ioBroker.senec, lib/state_attr.js).
+  -- No unit where the unit sends tenths: AMPACE.CELL_TEMPERATURES_*,
+  -- AMPACE.MODULE_MAX_TEMP / MODULE_MIN_TEMP, BMS.MAX_TEMP / MIN_TEMP
+  -- (0.1 degree Celsius), BMS.SYSTEM_SOC / SYSTEM_SOH (0.1 percent).
   ('senec_v3', 'AMPACE.CELL_TEMPERATURES_MODULE_A.0',        'Ampace Zelltemperaturen Modul A',              '1',  NULL,        'battery', 'num', 'gauge'),
   ('senec_v3', 'AMPACE.CELL_TEMPERATURES_MODULE_A.1',        'Ampace Zelltemperaturen Modul A',              '2',  NULL,        'battery', 'num', 'gauge'),
   ('senec_v3', 'AMPACE.CELL_TEMPERATURES_MODULE_A.2',        'Ampace Zelltemperaturen Modul A',              '3',  NULL,        'battery', 'num', 'gauge'),

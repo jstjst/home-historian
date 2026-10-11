@@ -77,8 +77,8 @@ services:
 
   # TimescaleDB: PostgreSQL with the TimescaleDB extension.
   #   The files under docker-entrypoint-initdb.d run ONLY on the first start
-  #   (empty volume), in name order: schema, module master data, read-only
-  #   role. Apply later changes by hand (see README).
+  #   (empty volume), in name order: schema, each module's devices.sql and
+  #   metrics.de.sql, read-only role. Apply later changes by hand (see README).
   timescaledb:
     image: timescale/timescaledb:2.17.2-pg16
     profiles: ["db"]
@@ -93,10 +93,14 @@ services:
     volumes:
       - timescale_data:/var/lib/postgresql/data
       - ./db/initdb/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
-      - ./modules/open3e/seed.de.sql:/docker-entrypoint-initdb.d/10_module_open3e.sql:ro
-      - ./modules/mbus/seed.de.sql:/docker-entrypoint-initdb.d/11_module_mbus.sql:ro
-      - ./modules/senec/seed.de.sql:/docker-entrypoint-initdb.d/12_module_senec.sql:ro
-      - ./modules/vicare/seed.de.sql:/docker-entrypoint-initdb.d/13_module_vicare.sql:ro
+      - ./modules/open3e/devices.sql:/docker-entrypoint-initdb.d/10_open3e_devices.sql:ro
+      - ./modules/open3e/metrics.de.sql:/docker-entrypoint-initdb.d/11_open3e_metrics.sql:ro
+      - ./modules/mbus/devices.sql:/docker-entrypoint-initdb.d/20_mbus_devices.sql:ro
+      - ./modules/mbus/metrics.de.sql:/docker-entrypoint-initdb.d/21_mbus_metrics.sql:ro
+      - ./modules/senec/devices.sql:/docker-entrypoint-initdb.d/30_senec_devices.sql:ro
+      - ./modules/senec/metrics.de.sql:/docker-entrypoint-initdb.d/31_senec_metrics.sql:ro
+      - ./modules/vicare/devices.sql:/docker-entrypoint-initdb.d/40_vicare_devices.sql:ro
+      - ./modules/vicare/metrics.de.sql:/docker-entrypoint-initdb.d/41_vicare_metrics.sql:ro
       - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]

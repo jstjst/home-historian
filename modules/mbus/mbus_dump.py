@@ -6,7 +6,7 @@ REQ_UD2 to a primary address, prints the answer as raw hex and then record by
 record: as pyMeterBus decodes it, and as the module would publish it (key and
 payload). The two differ where the module scales, and a record without a unit
 in the telegram shows "-": units of published values are master data
-(seed.de.sql), not part of the message.
+(metrics.de.sql), not part of the message.
 
     docker compose --profile mbus run --rm --no-deps mbus \
         python mbus_dump.py /dev/mbus --address 48

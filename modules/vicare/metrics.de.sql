@@ -1,35 +1,17 @@
 -- =====================================================================
--- vicare module: master data
---   Device type: 'vitocal250a', added to the enum here. ALTER TYPE ... ADD
---   VALUE must be committed before the value is used: run this file as it
---   is (psql commits every statement), not inside a transaction.
+-- vicare module: metric definitions, German display names
 --
---   Metrics: curated definitions for the features the ViCare API delivers
---   for a Vitocal 250-A with three heating circuits, a buffer cylinder and
---   a DHW cylinder. native_key = "<feature>.<property>". Every other feature
---   arrives as a stub, typed as text until curated.
+--   Type 'vitocal250a'. native_key is <feature>.<property>. The rows are
+--   the features the ViCare API delivers for a Vitocal 250-A with three
+--   heating circuits, a buffer cylinder and a DHW cylinder.
 --
---   Devices: none here. Gateway and device id belong to the installation;
---   the example below shows the row, see the README.
---
---   Display names are German, as in the installation they come from.
---   seed.en.sql puts English names over them.
---
---   Loaded automatically on an empty database volume. Later, by hand:
+--   Loaded on the first start of the database, after devices.sql. On an
+--   existing database (repeatable, only stubs are overwritten):
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/vicare/seed.de.sql
---   Running it again does no harm. Metrics curated by hand are left alone;
---   only stubs are overwritten. Typing a metric that already has values
---   needs db/backfill_value_types.sql afterwards.
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/vicare/metrics.de.sql
+--   A metric that already has values and becomes 'num' or 'bool' also
+--   needs db/backfill_value_types.sql.
 -- =====================================================================
-
-ALTER TYPE device_type ADD VALUE IF NOT EXISTS 'vitocal250a';
-
--- Example of an installation's device: device_key = 'vicare/<gatewayId>/
--- <deviceId>', the module logs it on its first pass.
--- INSERT INTO devices (type, device_key, name) VALUES
---   ('vitocal250a', 'vicare/<gatewayId>/0', 'Vitocal 250-A (API)')
--- ON CONFLICT (device_key) DO NOTHING;
 
 INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
   ('vitocal250a', 'heating.circuits.1.active',                                        'HK1',                                       'Status',              NULL,                   'hc1',       'bool', 'gauge'),

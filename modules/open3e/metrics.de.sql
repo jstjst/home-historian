@@ -1,56 +1,22 @@
 -- =====================================================================
--- open3e module: master data
---   Device type: 'vitocal250a', added to the enum here. ALTER TYPE ... ADD
---   VALUE must be committed before the value is used: run this file as it
---   is (psql commits every statement), not inside a transaction.
+-- open3e module: metric definitions, German display names
 --
---   Devices: one per control unit (ECU), device_key = "open3e/<name>" with
---   <name> as in config/devices.json. Without these rows the ingester drops
---   the module's messages.
+--   Types 'vitocal250a' and 'vitocharge'. native_key is the topic after the
+--   device with '/' turned into '.': <DID>_<name>[.<sub-value>...].
+--   The rows are the values a Vitocal 250-A delivered when every data
+--   point of its five control units was read, and two of a Vitocharge.
 --
---   Metrics: every data point a Vitocal 250-A delivered in a full read
---   (open3e -a) of its five control units, 2729 values of 754 data
---   points. native_key = remainder of the topic after the device_key
---   ('/' -> '.'); open3e flattens complex data points itself, one topic per
---   leaf.
---     Checked against stored values: value_type. A value is 'num' only if
---     everything stored for it within three days was a plain number below
---     1e12; values with leading zeros, hex strings, texts, dates and long
---     identifiers are 'str'.
---     NOT checked: names, units and categories are derived from open3e's
---     English data point names, and the units are a guess wherever the name
---     does not state one. Correct them where a value says otherwise.
---   Other heat pumps deliver other data points; the ingester creates those
---   as stubs.
+--   value_type is checked against stored values. Names, units and
+--   categories are derived from open3e's English data point names and are
+--   not checked; where the name states no unit, the unit is a guess.
 --
---   Display names are German, as in the installation they come from.
---   seed.en.sql puts English names over a few of them.
---
---   Loaded automatically on an empty database volume. Later, by hand:
+--   Loaded on the first start of the database, after devices.sql. On an
+--   existing database (repeatable, only stubs are overwritten):
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/open3e/seed.de.sql
---   Running it again does no harm. Metrics curated by hand are left alone;
---   only stubs are overwritten. Typing a metric that already has values
---   needs db/backfill_value_types.sql afterwards.
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/open3e/metrics.de.sql
+--   A metric that already has values and becomes 'num' or 'bool' also
+--   needs db/backfill_value_types.sql.
 -- =====================================================================
-
-ALTER TYPE device_type ADD VALUE IF NOT EXISTS 'vitocal250a';
-
-INSERT INTO devices (type, device_key, name) VALUES
-  ('vitocal250a', 'open3e/vitocal',    'Vitocal 250-A'),
-  ('vitocharge',  'open3e/vitocharge', 'Vitocharge VX3')
-ON CONFLICT (device_key) DO NOTHING;
-
--- The rows above are those of the simulator. An example of a real
--- installation, one device per control unit a scan found, with the scan's
--- addresses as keys:
---   ('vitocal250a', 'open3e/0x680', 'Vitocal 250-A HPMU (Regelung)'),
---   ('vitocal250a', 'open3e/0x684', 'Vitocal 250-A HMI (Bedieneinheit)'),
---   ('vitocal250a', 'open3e/0x68c', 'Vitocal 250-A VCMU (Kältekreis)'),
---   ('vitocal250a', 'open3e/0x6cd', 'Vitocal 250-A Inverter'),
---   ('vitocal250a', 'open3e/0x6cf', 'Vitocal 250-A EHCU (Heizwasser-Durchlauferhitzer)')
--- They share one type: a data point that several control units deliver is
--- one metric, curated once, and its values stay apart by device.
 
 INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
   ('vitocharge', '1603_PointOfCommonCouplingPower.ActivePower',   'Netzanschlusspunkt Wirkleistung',  'Ist', 'watt', 'grid', 'num', 'gauge'),

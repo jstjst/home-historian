@@ -1,16 +1,14 @@
 -- =====================================================================
 -- mbus module: English display names
---   seed.de.sql carries German display names. This file puts the English ones
---   over them: apply it after seed.de.sql, and again whenever seed.de.sql was
---   applied again. It changes display_name and display_subname only, also
---   on metrics curated by hand.
 --
+--   Sets display_name and display_subname of the rows below, also where
+--   they were changed by hand. Covers every row of
+--   metrics.de.sql.
+--   Apply it after metrics.de.sql:
 --     docker compose exec -T timescaledb sh -c \
---       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/mbus/seed.en.sql
+--       'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < modules/mbus/metrics.en.sql
 -- =====================================================================
 
--- DIF: 0x = current value, 1x = maximum, 3x = value during error state,
---      4x/5x = stored at the yearly target date (storage number 1).
 INSERT INTO metrics (type, native_key, display_name, display_subname, unit, category, value_type, aggregation) VALUES
   ('multical303', '04_05',   'Heat energy',             'actual',      'wh',         NULL, 'num', 'counter'),
   ('multical303', '04_06',   'Heat energy',             'actual',      'wh',         NULL, 'num', 'counter'),
