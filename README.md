@@ -147,7 +147,8 @@ database starts on an empty volume. Later changes are applied by hand, or
 the volume is discarded together with the measurements
 (`docker compose down -v`).
 
-- A database created before compression was added to the schema:
+- A database created before the schema compressed `measurements`, or while
+  it used chunks of 7 days:
   [db/enable_compression.sql](db/enable_compression.sql).
 - To discard only the measurements and the uncurated metrics:
   [docs/clear-data.md](docs/clear-data.md).
@@ -174,7 +175,7 @@ the volume is discarded together with the measurements
   (open3e) can be lost within a window of about two seconds if the ingester
   stops at that moment. Details in
   [docs/architecture.md](docs/architecture.md).
-- No retention: raw data is never deleted. Chunks older than 7 days are
+- No retention: raw data is never deleted. Chunks older than 1 day are
   compressed without loss.
 - Curating metrics is manual. Unknown quantities are stored, but they get a
   name, unit and category only through an entry in `metrics`. A metric typed

@@ -177,7 +177,7 @@ TimescaleDB is an extension of PostgreSQL. The project uses these of its
 properties:
 
 - A hypertable next to ordinary tables. `measurements` is a hypertable,
-  partitioned by time into chunks of 7 days; `devices` and `metrics` are
+  partitioned by time into chunks of 1 day; `devices` and `metrics` are
   ordinary tables in the same database. The view `v_measurements` joins them,
   which is how a definition applies to values stored before it and how
   values of different devices are compared.
@@ -315,16 +315,24 @@ otherwise dictate the size of table and index. The ingester resolves
 
 Every pass of a module stores every value again, changed or not, and a
 row costs well over 100 bytes, half of it index. Chunks of `measurements`
-older than 7 days are therefore compressed: stored column by column, one
+older than 1 day are therefore compressed: stored column by column, one
 segment per device and metric, ordered by time. That is the shape of the
 queries, and it puts similar values next to each other. In tests a
 compressed chunk took a twentieth to a thirtieth of the space and returned
 exactly the rows that went in.
 
-- The recent chunks are not compressed. A chunk spans 7 days and is
-  compressed once it lies 7 days back, so up to 14 days are uncompressed.
+- The recent chunks are not compressed. A chunk spans 1 day and is
+  compressed once it lies 1 day back, by a job that runs every 12 hours,
+  so up to 2.5 days are uncompressed.
   The ingester's inserts and its duplicate check normally only touch
-  those.
+  those; what the broker delivers after an outage of more than a day goes
+  into compressed chunks.
+- A chunk of 1 day keeps the uncompressed part and the indexes being
+  written to small. Shorter chunks compress worse: a compressed batch holds
+  up to 1000 rows of one metric and ends at the chunk boundary. Measured
+  with 1.4 million values of a heat pump and a battery storage (208
+  metrics, 7 days): 4.5 bytes per row with chunks of 7 days, 5.0 with
+  1 day, 8.0 with 6 hours, 25.7 with 1 hour; uncompressed about 120.
 - Compressed chunks can still be written to, more slowly: a late
   value is stored next to the compressed data, and the policy compresses
   it on its next run. Both aggregates read compressed chunks like any
@@ -335,6 +343,9 @@ exactly the rows that went in.
   per statement by default.
   [db/backfill_value_types.sql](../db/backfill_value_types.sql) therefore
   goes metric by metric.
+
+[db/compression_stats.sql](../db/compression_stats.sql) lists the chunks
+with their size and what compression saved.
 
 ### `display_name` and `display_subname`: the unified view
 

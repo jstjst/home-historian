@@ -127,12 +127,14 @@ does the analysis. The stack reads and never controls.
 - **A changed `value_type` takes effect once the metric cache expires**
   (`INGEST_METRIC_CACHE_SECONDS`, 1 h by default), or at once with
   `docker compose restart ingest` (lossless, the broker buffers).
-- **`measurements` is compressed after 7 days**, segmented by `device_id,
-  metric_id` (lossless; inserts into compressed chunks still work). An
-  `UPDATE` there has to carry the `metric_id` as a literal, or it unpacks
-  every compressed row and hits TimescaleDB's limit of 100 000 per
-  statement; `db/backfill_value_types.sql` shows the pattern. An existing
-  database gets compression with `db/enable_compression.sql`.
+- **`measurements` has chunks of 1 day and is compressed after 1 day**,
+  segmented by `device_id, metric_id` (lossless; inserts into compressed
+  chunks still work). Shorter chunks compress much worse (measured: 5.0
+  bytes per row at 1 day, 8.0 at 6 hours, 25.7 at 1 hour). An `UPDATE` there
+  has to carry the `metric_id` as a literal, or it unpacks every compressed
+  row and hits TimescaleDB's limit of 100 000 per statement;
+  `db/backfill_value_types.sql` shows the pattern. An existing database
+  gets both settings with `db/enable_compression.sql`.
 - **Unknown devices are dropped.** The ingester loads `devices` at startup;
   after adding one, `docker compose restart ingest`.
 - **Grafana reads as the role `grafana` (`SELECT` only)**, never as the
@@ -167,13 +169,13 @@ does the analysis. The stack reads and never controls.
 - open3e publishes at QoS 0 (not configurable). The broker only buffers that
   for a disconnected client with `queue_qos0_messages true`. Remaining gap:
   QoS 0 values still in the ingester's memory when it stops are lost.
-- Mosquitto: `queue_qos0_messages` needs `max_inflight_messages 0`. Every
-  buffered QoS 0 message permanently uses one inflight slot
 - Mosquitto's `max_queued_messages` counts QoS 1 messages only (2.0.22).
   QoS 0 is queued uncounted; once the limit is reached, new messages of
   both are dropped and the queued ones stay. The buffer lasts for the limit
   divided by the QoS 1 rate, not for the 7 days of the session expiry, and
   takes about 500 bytes of RAM per queued message.
+- Mosquitto: `queue_qos0_messages` needs `max_inflight_messages 0`. Every
+  buffered QoS 0 message permanently uses one inflight slot
   (`db__message_dequeue_first`, 2.0.22); after that all QoS 1 messages are
   stuck until the client reconnects. For the same reason the ingester must
   not send a `ReceiveMaximum`.
