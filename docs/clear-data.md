@@ -9,7 +9,7 @@ database up first.
 
 | | |
 |---|---|
-| Removed | every row of `measurements`; everything materialised in `measurements_1h` and `consumption_1d`; every metric that is still a stub (`display_name = native_key`) |
+| Removed | every row of `measurements`; everything materialised in `measurements_1h` and `consumption_1d`; every metric that is still a stub (`display_name = native_key`), with its note in `metric_notes` |
 | Kept | `devices`, curated metrics, the schema, both aggregates and their refresh policies, the role `grafana`, the dashboards, the broker's buffer |
 
 To start from nothing at all, `docker compose down -v` is the shorter way. It

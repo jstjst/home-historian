@@ -66,7 +66,7 @@ After about a minute:
 
 | What | Where |
 |---|---|
-| Grafana, dashboards "home-historian - Overview" and "home-historian - Stubs" | <http://localhost:3000> (login from `.env`) |
+| Grafana, dashboards "home-historian - Overview", "home-historian - Metrics" and "home-historian - Stubs" | <http://localhost:3000> (login from `.env`) |
 | MQTT explorer (broker host there: `mosquitto`) | <http://localhost:4000> |
 | pgAdmin | <http://localhost:5050> |
 
@@ -133,7 +133,9 @@ the first time:
 Where the device keys depend on the installation (vicare, mbus, a scanned
 open3e system), the module's README gives the rows to insert. A key without
 a definition is stored as a text-typed stub until it is curated; the
-dashboard "home-historian - Stubs" lists these.
+dashboard "home-historian - Stubs" lists these. "home-historian - Metrics"
+lists every metric, charts a selection, and edits the name, unit, category
+and note of a metric.
 
 The display names in `metrics.de.sql` are German. `metrics.en.sql`, where a
 module has one, replaces them with English names and is applied by hand.

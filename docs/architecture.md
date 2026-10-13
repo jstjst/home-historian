@@ -168,7 +168,8 @@ properties:
 - Typed columns. Devices deliver numbers, texts and booleans, and each has a
   column of its type.
 - PostgreSQL's roles and its data source in Grafana: Grafana reads through a
-  role that may only `SELECT`.
+  role that may only `SELECT`, and write the notes and five columns of a
+  metric's definition.
 
 ### One row per value, one column per value type
 
@@ -221,7 +222,9 @@ link to that database may fail without loss.
 
 The broker and the tools have no authentication, so every port is bound
 locally by default. Grafana reads through a database role that may only
-`SELECT`, because it passes SQL on unchecked. The open3e module starts without
+`SELECT`, because it passes SQL on unchecked; it may write the notes on
+metrics and five columns of a metric's definition, and nothing else. The
+open3e module starts without
 the command channel through which open3e could write data points; the stack
 does not need it.
 
@@ -263,9 +266,9 @@ VALUES ('multical303', '04_06', 'Heat energy', 'wh', 'counter');
 
 -- three devices sharing it
 INSERT INTO devices (type, device_key, name, category) VALUES
-  ('multical303', 'mbus/hc1', 'Heat meter HC1', 'hc1'),
-  ('multical303', 'mbus/hc2', 'Heat meter HC2', 'hc2'),
-  ('multical303', 'mbus/hc3', 'Heat meter HC3', 'hc3');
+  ('multical303', 'mbus/hc1', 'Heat meter HC1', 'hkDG'),
+  ('multical303', 'mbus/hc2', 'Heat meter HC2', 'hkOG'),
+  ('multical303', 'mbus/hc3', 'Heat meter HC3', 'hkEG');
 ```
 
 A "device" here is the physical unit, not the module: the open3e module reads
@@ -330,7 +333,7 @@ so queries group by both fields.
 
 ### `category`: the part of the installation, from metric or device
 
-The category assigns a value to a part of the installation (`hc1`, `dhw`,
+The category assigns a value to a part of the installation (`hkDG`, `dhw`,
 `pv`, `battery`, `grid`, …). It can live in two places:
 
 - on the metric, when the quantity itself determines the part. On a heat
@@ -339,7 +342,7 @@ The category assigns a value to a part of the installation (`hc1`, `dhw`,
   heat meter does not tell which heating circuit the meter is installed in.
 
 The view `v_measurements` merges the two with `COALESCE(metric, device)`. A
-single condition `category = 'hc1'` then finds the heat pump's flow
+single condition `category = 'hkDG'` then finds the heat pump's flow
 temperature and the heat meter of that circuit. A single place would model
 one of the two kinds of device wrongly.
 
@@ -381,6 +384,59 @@ SQL:
 ```sql
 SELECT metric_id, type, native_key FROM metrics WHERE display_name = native_key;
 ```
+
+### Editing and annotating metrics in Grafana
+
+The dashboard "home-historian - Metrics" lists every metric, stub or not, with
+its definition and its latest value, and charts the metrics selected there in
+one graph, one axis per unit. Below the graph each selected metric has a form
+with its definition and a note.
+
+The form writes `display_name`, `display_subname`, `unit`, `category` and
+`disabled` of the metric. An empty subname or unit and the category `none`
+are stored as NULL. With an empty name the definition stays as it is and only
+the note is saved; a form that failed to load its values therefore does not
+erase a definition. Giving a stub a name ends its being a stub, and writing
+the `native_key` back into the name makes it one again.
+
+- `value_type` and `aggregation` are not in the form. A changed type needs
+  [db/backfill_value_types.sql](../db/backfill_value_types.sql) for the
+  values already stored, and takes effect in the ingester only after the
+  metric cache expires.
+- An edit exists in the database only. A module's `metrics.de.sql` overwrites
+  stubs and leaves a named metric alone, so loading it again does not undo an
+  edit, and the file does not contain the edit until it is written there by
+  hand. A database built from the files does not have it.
+- `category` and the names are read at query time (`v_measurements`), so an
+  edit applies to the values already stored as well.
+
+The note is for what the form cannot settle: what the value turned out to be,
+that the type is wrong. A note is one row in `metric_notes` (`metric_id`,
+`note`, `updated`); saving an empty note deletes the row, and deleting a
+metric deletes its note. Nothing reads the notes automatically. They are the
+input for curation:
+
+```sql
+SELECT met.type, met.native_key, met.display_name, met.display_subname, n.note
+FROM metric_notes n JOIN metrics met USING (metric_id)
+ORDER BY 1, 2;
+```
+
+- The role `grafana` has `INSERT`, `UPDATE` and `DELETE` on `metric_notes`,
+  `UPDATE` on the five columns above, and `SELECT` on everything else. Every
+  Grafana user who can open the dashboard can change these definitions and
+  notes. Measurements, devices, and a metric's keys and types stay
+  read-only.
+- The forms are panels of the Grafana plugin Business Forms
+  (`volkovlabs-form-panel`), which [compose.yml](../compose.yml) installs on
+  Grafana's first start. Without the plugin the rest of the dashboard works.
+- The list shows the latest value per metric and no statistics over the time
+  range: counting the values of every metric is a scan of the whole range.
+  The stubs dashboard does count, for the stubs only.
+- A database created before the table existed gets it with
+  [db/add_metric_notes.sql](../db/add_metric_notes.sql), and the right to
+  edit definitions with
+  [db/grant_metric_edit.sql](../db/grant_metric_edit.sql).
 
 ### Devices are resolved by longest prefix
 

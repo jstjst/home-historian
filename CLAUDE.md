@@ -56,9 +56,10 @@ does the analysis. The stack reads and never controls.
 - Database identifiers are English: `measurements`, `v_measurements`,
   `measurements_1h`, `consumption_1d`, `metrics`, `devices`, `native_key`,
   `display_name`, `display_subname`, `category`, `aggregation`. Categories:
-  `hc1`–`hc3` (heating circuits), `dhw`, `pv`, `battery`, `grid`, ….
+  `hkDG`, `hkOG`, `hkEG` (heating circuits, named after the floor), `dhw`,
+  `pv`, `battery`, `grid`, ….
 - The exception: `display_name` and `display_subname` in the modules'
-  `metrics.de.sql` are German (HK1 Vorlauftemperatur; Ist/Soll/Status/Min/Max).
+  `metrics.de.sql` are German (HK DG Vorlauftemperatur; Ist/Soll/Status/Min/Max).
   `metrics.en.sql` replaces them with English names where a module has one;
   it is not maintained further.
 - Python: `paho-mqtt`, `psycopg[pool]`, `pygtrie`, `cachetools`,
@@ -135,7 +136,13 @@ does the analysis. The stack reads and never controls.
 - **Unknown devices are dropped.** The ingester loads `devices` at startup;
   after adding one, `docker compose restart ingest`.
 - **Grafana reads as the role `grafana` (`SELECT` only)**, never as the
-  owner: Grafana passes SQL to the database unchecked.
+  owner: Grafana passes SQL to the database unchecked. It may write what the
+  dashboard "home-historian - Metrics" edits: the table `metric_notes`, and
+  the columns `display_name`, `display_subname`, `unit`, `category` and
+  `disabled` of `metrics`. Do not grant it more without asking.
+- **Definitions edited in Grafana exist in the database only.** A module's
+  `metrics.de.sql` overwrites stubs and leaves a named metric alone, so it
+  does not undo an edit and does not contain it either.
 - **Real-time continuous aggregates need `materialized_only = false`**, or
   the current, not yet materialised edge is missing from dashboards.
 - **Ports are bound locally by default** (`BIND_ADDRESS`), because broker and

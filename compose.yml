@@ -122,6 +122,11 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is not set (copy .env.example to .env)}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      # Form panel of the dashboard "home-historian - Metrics" (definition
+      # and note of a metric). Downloaded from grafana.com on the first
+      # start, then kept in the volume; without it only that dashboard's
+      # edit panels stay empty.
+      GF_PLUGINS_PREINSTALL: volkovlabs-form-panel@6.3.5
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:3000:3000"
     volumes:

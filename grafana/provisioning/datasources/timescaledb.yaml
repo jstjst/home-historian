@@ -7,7 +7,7 @@ datasources:
     uid: timescaledb                # stable: dashboards refer to this uid
     access: proxy
     url: timescaledb:5432           # service name inside the compose network
-    user: grafana                   # read-only role (db/initdb/90_grafana_role.sh)
+    user: grafana                   # role of its own, not the owner (db/initdb/90_grafana_role.sh)
     database: ${POSTGRES_DB}
     isDefault: true
     editable: false                 # provisioned: changes belong in this file

@@ -1,0 +1,913 @@
+{
+  "uid": "metrics",
+  "title": "home-historian - Metrics",
+  "tags": [
+    "home-historian"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "home-historian",
+      "tags": [
+        "home-historian"
+      ],
+      "asDropdown": false,
+      "keepTime": true
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "type",
+        "label": "Device type",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "timescaledb"
+        },
+        "query": "SELECT DISTINCT type::text FROM metrics ORDER BY 1",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "category",
+        "label": "Category",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "timescaledb"
+        },
+        "query": "SELECT DISTINCT coalesce(category::text, 'none') FROM metrics ORDER BY 1",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        }
+      },
+      {
+        "name": "show",
+        "label": "Show",
+        "type": "custom",
+        "query": "all,stubs,named,noted",
+        "multi": false,
+        "includeAll": false,
+        "options": [
+          {
+            "text": "all",
+            "value": "all",
+            "selected": true
+          },
+          {
+            "text": "stubs",
+            "value": "stubs",
+            "selected": false
+          },
+          {
+            "text": "named",
+            "value": "named",
+            "selected": false
+          },
+          {
+            "text": "noted",
+            "value": "noted",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": "all",
+          "value": "all",
+          "selected": true
+        }
+      },
+      {
+        "name": "search",
+        "label": "Search",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ]
+      },
+      {
+        "name": "metric",
+        "label": "Metric",
+        "type": "query",
+        "datasource": {
+          "type": "postgres",
+          "uid": "timescaledb"
+        },
+        "query": "SELECT met.type::text || ' / ' || met.display_name || coalesce(' ' || met.display_subname, '')\n       || CASE WHEN met.display_name <> met.native_key THEN ' [' || met.native_key || ']' ELSE '' END AS __text,\n       met.metric_id AS __value\nFROM metrics met\nLEFT JOIN metric_notes n USING (metric_id)\nWHERE met.type::text IN (${type:singlequote})\n  AND coalesce(met.category::text, 'none') IN (${category:singlequote})\n  AND CASE '$show' WHEN 'stubs' THEN met.display_name = met.native_key\n                   WHEN 'named' THEN met.display_name <> met.native_key\n                   WHEN 'noted' THEN n.note IS NOT NULL\n                   ELSE true END\n  AND concat_ws(' ', met.native_key, met.display_name, met.display_subname, n.note) ILIKE '%$search%'\nORDER BY 1",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Metrics",
+      "description": "One row per metric, with its latest value in the selected time range (one row per device where several devices of the type report it; empty where none did). The filters above narrow the list: Show = stubs (display_name = native_key), named, or noted (has a note); Search looks in native_key, display name, display subname and note. Click a native_key to chart that metric or to add it to the chart.",
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "timescaledb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT met.metric_id,\n       met.type::text AS type,\n       met.native_key,\n       met.display_name,\n       met.display_subname,\n       seen.latest_value,\n       n.note,\n       met.unit,\n       met.category::text AS category,\n       seen.device,\n       seen.latest,\n       met.value_type::text AS value_type,\n       met.disabled\nFROM metrics met\nLEFT JOIN metric_notes n USING (metric_id)\nLEFT JOIN LATERAL (\n  -- the latest value in the time range, per device that reported one\n  SELECT d.name AS device, l.time AS latest, l.value AS latest_value\n  FROM devices d\n  CROSS JOIN LATERAL (\n    SELECT m.time, coalesce(m.value_str, m.value_num::text, m.value_bool::text) AS value\n    FROM measurements m\n    WHERE m.device_id = d.device_id\n      AND m.metric_id = met.metric_id\n      AND $__timeFilter(m.time)\n    ORDER BY m.time DESC\n    LIMIT 1\n  ) l\n  WHERE d.type = met.type\n) seen ON true\nWHERE met.type::text IN (${type:singlequote})\n  AND coalesce(met.category::text, 'none') IN (${category:singlequote})\n  AND CASE '$show' WHEN 'stubs' THEN met.display_name = met.native_key\n                   WHEN 'named' THEN met.display_name <> met.native_key\n                   WHEN 'noted' THEN n.note IS NOT NULL\n                   ELSE true END\n  AND concat_ws(' ', met.native_key, met.display_name, met.display_subname, n.note) ILIKE '%$search%'\nORDER BY met.type, met.native_key, seen.device"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "native_key"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Chart only this metric",
+                    "url": "/d/metrics?${__url_time_range}&${type:queryparam}&${category:queryparam}&${show:queryparam}&${search:queryparam}&var-metric=${__data.fields.metric_id}"
+                  },
+                  {
+                    "title": "Add to the chart",
+                    "url": "/d/metrics?${__url_time_range}&${__all_variables}&var-metric=${__data.fields.metric_id}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "native_key"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "display_name"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 230
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "type"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "display_subname"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "latest_value"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "metric_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "note"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "auto",
+                  "wrapText": true
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Values over time",
+      "description": "The metrics selected in Metric, one axis per unit. Booleans are drawn as 0/1; text values only where they parse as a number (a stub stores everything as text). The number in brackets is the metric_id.",
+      "gridPos": {
+        "h": 12,
+        "w": 15,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "timescaledb"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT $__timeGroup(m.time, $__interval) AS \"time\",\n       d.name || ' / ' || met.display_name || coalesce(' ' || met.display_subname, '') || ' [' || met.metric_id || ']' AS metric,\n       coalesce(met.unit, '') AS unit,\n       avg(coalesce(m.value_num, m.value_bool::int, m.value_str::double precision)) AS value\nFROM measurements m\nJOIN devices d USING (device_id)\nJOIN metrics met USING (metric_id)\nWHERE $__timeFilter(m.time)\n  AND m.metric_id = ANY ('{${metric:csv}}')\n  AND (m.value_str IS NULL OR pg_input_is_valid(m.value_str, 'double precision'))\nGROUP BY 1, 2, 3\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.metric}",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 0,
+            "showPoints": "auto",
+            "pointSize": 3,
+            "spanNulls": true,
+            "axisWidth": 60
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"celsius\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "celsius"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"kelvin\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kelvin"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"percent\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"watt\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"kilowatt\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kwatt"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"var\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "voltampreact"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"wh\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watth"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"kwh\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kwatth"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"volt\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "volt"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"millivolt\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "mvolt"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"ampere\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "amp"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"hertz\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "hertz"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"bar\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "pressurebar"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"rps\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: rps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"second\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"minute\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"hour\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "h"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"liter\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "litre"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"liter\\/hour\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: l/h"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"lph\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: l/h"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"m3\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "m3"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"m3\\/hour\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m³/h"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/unit=\"m3\\*celsius\"/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: m³·°C"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "lastNotNull",
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Distinct values",
+      "description": "The 200 most frequent values of the selected metrics in the selected time range.",
+      "gridPos": {
+        "h": 12,
+        "w": 9,
+        "x": 15,
+        "y": 13
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "timescaledb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT met.display_name || coalesce(' ' || met.display_subname, '') || ' [' || met.metric_id || ']' AS metric,\n       coalesce(m.value_str, m.value_num::text, m.value_bool::text) AS value,\n       count(*) AS count,\n       min(m.time) AS first_seen,\n       max(m.time) AS last_seen\nFROM measurements m\nJOIN metrics met USING (metric_id)\nWHERE $__timeFilter(m.time)\n  AND m.metric_id = ANY ('{${metric:csv}}')\nGROUP BY met.metric_id, 2\nORDER BY count DESC, metric, value\nLIMIT 200"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      }
+    },
+    {
+      "id": 4,
+      "type": "volkovlabs-form-panel",
+      "title": "Edit: ${metric:text}",
+      "description": "Definition and note of one metric. Save writes display_name, display_subname, unit, category and disabled to metrics, and the note to metric_notes; an empty note deletes it. With an empty name the definition stays as it is and only the note is saved. value_type and aggregation are not edited here: a changed type needs db/backfill_value_types.sql. Refreshing the dashboard reloads the stored values and discards what is not saved. The panel title and the Metric selector show a changed name after the page is reloaded. Needs the plugin Business Forms (volkovlabs-form-panel).",
+      "gridPos": {
+        "h": 11,
+        "w": 8,
+        "x": 0,
+        "y": 25
+      },
+      "repeat": "metric",
+      "repeatDirection": "h",
+      "maxPerRow": 3,
+      "datasource": {
+        "type": "postgres",
+        "uid": "timescaledb"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "postgres",
+            "uid": "timescaledb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "SELECT met.display_name,\n       coalesce(met.display_subname, '') AS display_subname,\n       coalesce(met.unit, '') AS unit,\n       coalesce(met.category::text, 'none') AS category,\n       met.disabled,\n       coalesce(n.note, '') AS note\nFROM metrics met\nLEFT JOIN metric_notes n USING (metric_id)\nWHERE met.metric_id = ANY ('{${metric:csv}}')"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "postgres",
+            "uid": "timescaledb"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "editorMode": "code",
+          "rawSql": "-- the options of the field Category\nSELECT 'none' AS category_option\nUNION ALL\nSELECT c::text FROM unnest(enum_range(NULL::category)) AS c"
+        }
+      ],
+      "options": {
+        "sync": true,
+        "updateEnabled": "auto",
+        "elements": [
+          {
+            "uid": "display_name",
+            "id": "display_name",
+            "type": "string",
+            "title": "Name",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "display_name",
+              "label": "A:display_name"
+            },
+            "value": "",
+            "hidden": false
+          },
+          {
+            "uid": "display_subname",
+            "id": "display_subname",
+            "type": "string",
+            "title": "Subname",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "display_subname",
+              "label": "A:display_subname"
+            },
+            "value": "",
+            "hidden": false
+          },
+          {
+            "uid": "unit",
+            "id": "unit",
+            "type": "string",
+            "title": "Unit",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "unit",
+              "label": "A:unit"
+            },
+            "value": "",
+            "hidden": false
+          },
+          {
+            "uid": "category",
+            "id": "category",
+            "type": "select",
+            "title": "Category",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "category",
+              "label": "A:category"
+            },
+            "value": "none",
+            "options": [],
+            "optionsSource": "Query",
+            "allowCustomValue": false,
+            "queryOptions": {
+              "source": "B",
+              "value": "category_option",
+              "label": null
+            }
+          },
+          {
+            "uid": "disabled",
+            "id": "disabled",
+            "type": "boolean",
+            "title": "Disabled",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "disabled",
+              "label": "A:disabled"
+            },
+            "value": false
+          },
+          {
+            "uid": "note",
+            "id": "note",
+            "type": "textarea",
+            "title": "Note",
+            "tooltip": "",
+            "section": "",
+            "unit": "",
+            "value": "",
+            "rows": 4,
+            "labelWidth": 12,
+            "queryField": {
+              "refId": "A",
+              "value": "note",
+              "label": "A:note"
+            }
+          }
+        ],
+        "initial": {
+          "method": "query",
+          "code": "",
+          "contentType": "application/json",
+          "getPayload": "return {};",
+          "payload": {},
+          "highlight": false,
+          "highlightColor": "red"
+        },
+        "update": {
+          "method": "datasource",
+          "datasource": "timescaledb",
+          "payloadMode": "custom",
+          "getPayload": "const value = (id) => context.panel.elements.find((e) => e.id === id).value;\n\n// base64 of the UTF-8 bytes; the query decodes it\nconst encode = (text) => {\n  let binary = '';\n  new TextEncoder().encode(String(text ?? '').trim()).forEach((b) => {\n    binary += String.fromCharCode(b);\n  });\n  return btoa(binary);\n};\n\nreturn {\n  display_name: encode(value('display_name')),\n  display_subname: encode(value('display_subname')),\n  unit: encode(value('unit')),\n  category: encode(value('category')),\n  disabled: value('disabled') === true ? 'true' : 'false',\n  // the plugin keeps line breaks in a textarea as the two characters \\n\n  note: encode(String(value('note') || '').replaceAll('\\\\n', '\\n')),\n};",
+          "payload": {
+            "refId": "A",
+            "datasource": {
+              "type": "postgres",
+              "uid": "timescaledb"
+            },
+            "format": "table",
+            "rawQuery": true,
+            "editorMode": "code",
+            "rawSql": "WITH new AS (\n  SELECT metric_id,\n         convert_from(decode('${payload.display_name}', 'base64'), 'UTF8') AS display_name,\n         convert_from(decode('${payload.display_subname}', 'base64'), 'UTF8') AS display_subname,\n         convert_from(decode('${payload.unit}', 'base64'), 'UTF8') AS unit,\n         convert_from(decode('${payload.category}', 'base64'), 'UTF8') AS category,\n         '${payload.disabled}'::boolean AS disabled,\n         convert_from(decode('${payload.note}', 'base64'), 'UTF8') AS note\n  FROM metrics\n  WHERE metric_id = ANY ('{${metric:csv}}')\n    -- one form edits one metric\n    AND cardinality('{${metric:csv}}'::int[]) = 1\n),\ndefined AS (\n  UPDATE metrics met\n  SET display_name    = new.display_name,\n      display_subname = nullif(new.display_subname, ''),\n      unit            = nullif(new.unit, ''),\n      category        = nullif(new.category, 'none')::category,\n      disabled        = new.disabled\n  FROM new\n  WHERE met.metric_id = new.metric_id\n    -- a form that did not load its values has no name and changes nothing\n    AND new.display_name <> ''\n),\nemptied AS (\n  DELETE FROM metric_notes\n  WHERE metric_id IN (SELECT metric_id FROM new WHERE note = '')\n)\nINSERT INTO metric_notes (metric_id, note)\nSELECT metric_id, note FROM new WHERE note <> ''\nON CONFLICT (metric_id) DO UPDATE SET note = EXCLUDED.note, updated = now()"
+          },
+          "code": "if (context.panel.response) {\n  context.grafana.notifySuccess(['Metric', 'Saved.']);\n  context.grafana.refresh();\n} else {\n  context.grafana.notifyError(['Metric', 'Not saved.']);\n}",
+          "confirm": false,
+          "contentType": "application/json"
+        },
+        "resetAction": {
+          "mode": "initial",
+          "code": "",
+          "confirm": false,
+          "getPayload": "return {};",
+          "payload": {}
+        },
+        "layout": {
+          "variant": "single",
+          "orientation": "horizontal",
+          "padding": 10,
+          "sectionVariant": "default"
+        },
+        "buttonGroup": {
+          "orientation": "left",
+          "size": "sm"
+        },
+        "submit": {
+          "variant": "primary",
+          "icon": "save",
+          "text": "Save",
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow"
+        },
+        "reset": {
+          "variant": "hidden",
+          "icon": "process",
+          "text": "Reset",
+          "backgroundColor": "purple",
+          "foregroundColor": "yellow"
+        },
+        "saveDefault": {
+          "variant": "hidden",
+          "icon": "save",
+          "text": "Save Default"
+        },
+        "confirmModal": {
+          "title": "Confirm update request",
+          "body": "Please confirm to update changed values",
+          "confirm": "Confirm",
+          "cancel": "Cancel",
+          "elementDisplayMode": "modified",
+          "columns": {
+            "include": [
+              "name",
+              "oldValue",
+              "newValue"
+            ],
+            "name": "Label",
+            "oldValue": "Old Value",
+            "newValue": "New Value"
+          }
+        },
+        "elementValueChanged": ""
+      }
+    }
+  ]
+}
