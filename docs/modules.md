@@ -79,7 +79,8 @@ the same information.
 ### Delivery
 
 - QoS 1, so that the broker holds the values while the ingester is down.
-  QoS 0 is buffered as well but has a loss window of about two seconds, see
+  QoS 0 is buffered as well but has a loss window of about two seconds, and
+  the broker's queue limit does not count it, see
   [architecture.md](architecture.md).
 - Not retained. An old value delivered again on subscribing would be a
   duplicate in the time series.

@@ -106,7 +106,7 @@ no values should be lost. The ingester has no queue of its own and uses the
 broker's:
 
 - It holds a persistent session (fixed client id, expiring after 7 days).
-  The broker queues what it cannot deliver.
+  The broker queues what it cannot deliver, up to a limit (see below).
 - It acknowledges only after the commit (`manual_ack`). To the broker a
   message counts as delivered once its row is in the database.
 - When the database is unreachable it disconnects from the broker, writes
@@ -148,7 +148,28 @@ One gap remains: QoS 0 values the ingester has received but not yet written
 New modules should therefore publish at QoS 1.
 
 Measured in testing: a backlog of 71,000 messages was drained 6 seconds after
-reconnecting; a buffered message takes roughly 480 bytes of RAM in the broker.
+reconnecting; a buffered message takes roughly 500 bytes of RAM in the broker.
+
+How long the buffer lasts: the session expiry (7 days) is the upper bound.
+Before that, the queue ends at `max_queued_messages` in
+[mosquitto.conf](../mosquitto/config/mosquitto.conf), 1,000,000 by default.
+Checked on Mosquitto 2.0.22 with the settings above:
+
+- The limit counts QoS 1 messages only. QoS 0 messages are queued without
+  being counted.
+- Once it is reached, every new message is dropped, QoS 0 and QoS 1. What is
+  queued stays, so the start of an outage is covered and its end is not.
+- With QoS 0 publishers alone the limit is never reached, and the queue
+  grows until the session expires.
+
+The buffer therefore lasts for the limit divided by the rate of QoS 1
+messages, and takes 500 bytes of RAM for every message queued in that time,
+QoS 0 included. Example: a heat pump and a battery storage, both read in
+full, came to 3.9 million messages a day, 1.5 million of them at QoS 1. The
+default limit is reached after 16 hours, with 2.6 million messages or
+1.3 GB in the queue. Reading less (`OPEN3E_DIDS`, `SENEC_SECTIONS`, the
+polling intervals) lengthens the buffer and shrinks it at the same time; a
+lower limit only shrinks it.
 
 ### TimescaleDB as the database
 

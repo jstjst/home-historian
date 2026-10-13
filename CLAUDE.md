@@ -169,6 +169,11 @@ does the analysis. The stack reads and never controls.
   QoS 0 values still in the ingester's memory when it stops are lost.
 - Mosquitto: `queue_qos0_messages` needs `max_inflight_messages 0`. Every
   buffered QoS 0 message permanently uses one inflight slot
+- Mosquitto's `max_queued_messages` counts QoS 1 messages only (2.0.22).
+  QoS 0 is queued uncounted; once the limit is reached, new messages of
+  both are dropped and the queued ones stay. The buffer lasts for the limit
+  divided by the QoS 1 rate, not for the 7 days of the session expiry, and
+  takes about 500 bytes of RAM per queued message.
   (`db__message_dequeue_first`, 2.0.22); after that all QoS 1 messages are
   stuck until the client reconnects. For the same reason the ingester must
   not send a `ReceiveMaximum`.
