@@ -105,7 +105,7 @@ If the database fails, or the connection to it when it runs on another host,
 no values should be lost. The ingester has no queue of its own and uses the
 broker's:
 
-- It holds a persistent session (fixed client id, expiring after 7 days).
+- It holds a persistent session (fixed client id, expiring after 1 day).
   The broker queues what it cannot deliver, up to a limit (see below).
 - It acknowledges only after the commit (`manual_ack`). To the broker a
   message counts as delivered once its row is in the database.
@@ -150,9 +150,11 @@ New modules should therefore publish at QoS 1.
 Measured in testing: a backlog of 71,000 messages was drained 6 seconds after
 reconnecting; a buffered message takes roughly 500 bytes of RAM in the broker.
 
-How long the buffer lasts: the session expiry (7 days) is the upper bound.
-Before that, the queue ends at `max_queued_messages` in
-[mosquitto.conf](../mosquitto/config/mosquitto.conf), 1,000,000 by default.
+How long the buffer lasts: the session expiry is the upper bound, 1 day
+(`persistent_client_expiration` in
+[mosquitto.conf](../mosquitto/config/mosquitto.conf) caps the ingester's own
+7 days). Before that, the queue ends at `max_queued_messages`, 100,000 by
+default.
 Checked on Mosquitto 2.0.22 with the settings above:
 
 - The limit counts QoS 1 messages only. QoS 0 messages are queued without
@@ -166,16 +168,17 @@ The buffer therefore lasts for the limit divided by the rate of QoS 1
 messages, and takes 500 bytes of RAM for every message queued in that time,
 QoS 0 included. Example: a heat pump and a battery storage, both read in
 full, came to 3.9 million messages a day, 1.5 million of them at QoS 1. The
-default limit is reached after 16 hours, with 2.6 million messages or
-1.3 GB in the queue. Reading less (`OPEN3E_DIDS`, `SENEC_SECTIONS`, the
-polling intervals) lengthens the buffer and shrinks it at the same time; a
-lower limit only shrinks it.
+default limit is reached after 1.6 hours, with 260,000 messages or
+130 MB in the queue; a limit of 1,000,000 would last 16 hours with 1.3 GB.
+Reading less (`OPEN3E_DIDS`, `SENEC_SECTIONS`, the polling intervals)
+lengthens the buffer and shrinks it at the same time; a lower limit only
+shrinks it.
 
 The limit applies to every client with a persistent session, not to the
 ingester alone: any subscriber that connects with `clean session false`
 (MQTT 3.1.1) or a session expiry (MQTT 5) and then goes away gets a queue of
 its own, up to the same limit, for as long as its session lives (at most
-`persistent_client_expiration`, 7 days; it caps MQTT 5 sessions as well, so
+`persistent_client_expiration`, 1 day; it caps MQTT 5 sessions as well, so
 it cannot be lowered for other clients without shortening the ingester's
 buffer). A client that picks a random client id at every start leaves one
 such session behind each time. No setting caps QoS 0 directly:

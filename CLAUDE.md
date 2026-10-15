@@ -172,7 +172,8 @@ does the analysis. The stack reads and never controls.
 - Mosquitto's `max_queued_messages` counts QoS 1 messages only (2.0.22).
   QoS 0 is queued uncounted; once the limit is reached, new messages of
   both are dropped and the queued ones stay. The buffer lasts for the limit
-  divided by the QoS 1 rate, not for the 7 days of the session expiry, and
+  divided by the QoS 1 rate, not for the 1 day of the session expiry
+  (`persistent_client_expiration`, which caps the ingester's 7 days too), and
   takes about 500 bytes of RAM per queued message, QoS 0 included.
 - The limit is per client. Every subscriber with a persistent session that
   goes away fills a queue of its own (about 80 bytes more per message and

@@ -169,9 +169,10 @@ the volume is discarded together with the measurements
 - No control. Alerts can be set up with Grafana's alerting; the repository
   contains no alert rules.
 - Outages: when the database is unreachable the broker buffers and delivers
-  afterwards. It buffers until its queue is full, 7 days at most; with
-  every value of a heat pump and a battery storage being read, that was
-  16 hours and 1.3 GB of RAM. Values a module sends at MQTT QoS 0
+  afterwards. It buffers until its queue is full, 1 day at most; with
+  every value of a heat pump and a battery storage being read, that is
+  1.6 hours and 130 MB of RAM (`max_queued_messages` in
+  [mosquitto.conf](mosquitto/config/mosquitto.conf) sets it). Values a module sends at MQTT QoS 0
   (open3e) can be lost within a window of about two seconds if the ingester
   stops at that moment. Details in
   [docs/architecture.md](docs/architecture.md).

@@ -57,9 +57,10 @@ services:
       INGEST_MQTT_TOPIC_FILTER: ${MQTT_TOPIC_PREFIX:-historian}/#
       # Keep stable: it anchors the persistent session at the broker.
       INGEST_MQTT_CLIENT_ID: ${INGEST_MQTT_CLIENT_ID:-home-historian-ingest}
-      # How long the broker buffers for the ingester at most (7 days). Longer
-      # outages of the database lose data. The queue limit in mosquitto.conf
-      # (max_queued_messages) can end the buffer earlier.
+      # How long the broker buffers for the ingester at most (7 days). The
+      # broker cuts it to 1 day (persistent_client_expiration in
+      # mosquitto.conf); its queue limit (max_queued_messages) can end the
+      # buffer earlier. Longer outages of the database lose data.
       INGEST_MQTT_SESSION_EXPIRY_SECONDS: ${INGEST_MQTT_SESSION_EXPIRY_SECONDS:-604800}
       # How long (type, native_key) -> metric_id stays cached. A changed
       # value_type takes effect after that at the latest, or at once with
