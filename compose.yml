@@ -165,10 +165,13 @@ services:
     # with it a device of its own (device_key "open3e/<device>").
     #
     # A list of data points is read by one open3e process, again and again
-    # (-r with -t). open3e's "all data points" (-a) reads once and exits, so
-    # for OPEN3E_DIDS=all it is started anew for every pass. That needs the
-    # data point lists of a scan: without them open3e asks for every data
-    # point it knows of and publishes an error for each one the device lacks.
+    # (-r with -t, which pauses that long after each pass). open3e's "all data
+    # points" (-a) reads once and exits, so for OPEN3E_DIDS=all it is started
+    # anew for every pass, one pass per interval counted from the start of the
+    # previous one (a pass that takes longer starts the next at once). That
+    # needs the data point lists of a scan: without them open3e asks for
+    # every data point it knows of and publishes an error for each one the
+    # device lacks.
     command:
       - sh
       - -c
@@ -184,8 +187,10 @@ services:
           exit 1
         fi
         while true; do
+          started=$$(date +%s)
           "$$@" -a || exit 1
-          sleep "$$OPEN3E_INTERVAL_SECONDS"
+          left=$$(( started + OPEN3E_INTERVAL_SECONDS - $$(date +%s) ))
+          if [ "$$left" -gt 0 ]; then sleep "$$left"; fi
         done
     depends_on:
       - mosquitto

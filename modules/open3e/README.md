@@ -31,17 +31,18 @@ interface of the host.
 |---|---|---|
 | `OPEN3E_CAN_INTERFACE` | `vcan0` | CAN interface of the host; `can0` for a real adapter |
 | `OPEN3E_DIDS` | `vitocal.268,vitocal.396,vitocharge.1603` | data points to read, as `<device>.<DID>` or `<device>.[<DID>,<DID>,…]`; `all` for [every data point of a scanned system](#reading-every-data-point) |
-| `OPEN3E_INTERVAL_SECONDS` | `60` | pause between two passes |
+| `OPEN3E_INTERVAL_SECONDS` | `60` | with a list: pause between two passes; with `all`: time from the start of one pass to the next |
 
 [config/devices.json](config/devices.json) lists the control units (key, CAN
 address, data point list). The shipped file matches the simulator; a
 [scan](#5-scan-the-system) writes the one for a real system.
 
-open3e reads its data points from first to last, waits
+With a list, open3e reads its data points from first to last, waits
 `OPEN3E_INTERVAL_SECONDS` and starts again. A pass therefore begins every
-interval plus the time the pass took. Reading some data points more often
-than others would need open3e's command channel, which the module does not
-start.
+interval plus the time the pass took. With [`all`](#reading-every-data-point)
+a pass begins every interval, counted from the start of the previous one.
+Reading some data points more often than others would need open3e's command
+channel, which the module does not start.
 
 ### Reading every data point
 
@@ -57,9 +58,10 @@ publishes an error topic for each one the unit does not have (3102 against
 the two units of the simulator). The module does not start in that case.
 
 `-a` reads once and exits. For `all`, open3e is therefore started again for
-every pass, with `OPEN3E_INTERVAL_SECONDS` in between; a list is read by one
-process that keeps running. Against the simulator this gives 143 values from
-26 data points per pass and one pass every 62 s at an interval of 60 s.
+every pass, one pass per `OPEN3E_INTERVAL_SECONDS` counted from the start of
+the previous one; a pass that takes longer than that starts the next at once.
+A list is read by one process that keeps running. Against the simulator this
+gives 143 values from 26 data points per pass, about 2 s per pass.
 
 Consequences:
 
