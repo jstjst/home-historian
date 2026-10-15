@@ -173,7 +173,13 @@ does the analysis. The stack reads and never controls.
   QoS 0 is queued uncounted; once the limit is reached, new messages of
   both are dropped and the queued ones stay. The buffer lasts for the limit
   divided by the QoS 1 rate, not for the 7 days of the session expiry, and
-  takes about 500 bytes of RAM per queued message.
+  takes about 500 bytes of RAM per queued message, QoS 0 included.
+- The limit is per client. Every subscriber with a persistent session that
+  goes away fills a queue of its own (about 80 bytes more per message and
+  session, the message is stored once). Four forgotten sessions with random
+  client ids grew `mosquitto.db` to 2 GB on a 4 GB Raspberry Pi: the broker
+  took two minutes to load it, left 27 MB of RAM free, and the machine
+  restarted every six minutes.
 - Mosquitto: `queue_qos0_messages` needs `max_inflight_messages 0`. Every
   buffered QoS 0 message permanently uses one inflight slot
   (`db__message_dequeue_first`, 2.0.22); after that all QoS 1 messages are

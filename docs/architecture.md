@@ -171,6 +171,35 @@ default limit is reached after 16 hours, with 2.6 million messages or
 polling intervals) lengthens the buffer and shrinks it at the same time; a
 lower limit only shrinks it.
 
+The limit applies to every client with a persistent session, not to the
+ingester alone: any subscriber that connects with `clean session false`
+(MQTT 3.1.1) or a session expiry (MQTT 5) and then goes away gets a queue of
+its own, up to the same limit, for as long as its session lives (at most
+`persistent_client_expiration`, 7 days; it caps MQTT 5 sessions as well, so
+it cannot be lowered for other clients without shortening the ingester's
+buffer). A client that picks a random client id at every start leaves one
+such session behind each time. No setting caps QoS 0 directly:
+`max_queued_bytes`, like `max_queued_messages`, counts QoS 1 and 2 only
+(`queued_bytes12`, `queued_count12` in `src/database.c`). A lower
+`max_queued_messages` limits them indirectly, since the queue stops growing
+once the QoS 1 count reaches it, as long as QoS 1 messages keep coming.
+Measured on Mosquitto 2.0.22 with 50,000 messages of each QoS: one queued
+copy takes about 500 bytes of RAM, each further session queueing the same
+message about 80 bytes more (the message itself is stored once). Messages
+that only one session still holds cost the full 500 bytes. The persistence
+file holds the same data, about 200 bytes per message for one session, and
+is rewritten as a whole at every `autosave_interval`.
+
+Observed on a Raspberry Pi with 4 GB of RAM: four forgotten sessions of an
+external subscriber filled their queues; `mosquitto.db` grew to 2 GB. The
+broker then needed about two minutes after start to load it before it
+accepted connections. With 27 MB of RAM left the machine restarted a few
+minutes later, again and again, loading the same file each time, since the
+next autosave never completed.
+Remedy: stop the broker, delete `mosquitto.db` (the ingester's part of it
+was already written), and give other subscribers a fixed client id or a
+clean session.
+
 ### TimescaleDB as the database
 
 TimescaleDB is an extension of PostgreSQL. The project uses these of its
