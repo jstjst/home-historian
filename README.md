@@ -16,6 +16,7 @@ reads only and does not control any device.
  vicare  (cloud API)       ─┼─► Mosquitto ─► ingest ─► TimescaleDB ─► Grafana / SQL
  mbus    (M-Bus meters)    ─┤   (MQTT 5,     (Python)   (PostgreSQL)
  senec   (local API)       ─┤   buffers)
+ tuya    (cloud push)      ─┤
  … your own module         ─┘
 ```
 
@@ -79,7 +80,7 @@ Further options:
   ([modules/open3e](modules/open3e/README.md#simulator)).
 - A second simulator answers as M-Bus heat meters behind a TCP port
   ([modules/mbus](modules/mbus/README.md#simulator)).
-- The vicare and senec modules have no simulator.
+- The vicare, senec and tuya modules have no simulator.
 
 ## Modules
 
@@ -98,6 +99,7 @@ Supporting a new device means writing a module; the core stays unchanged.
 | [mbus](modules/mbus/) | wired M-Bus meters over a serial port (Kamstrup MULTICAL 303 heat meters) | [pyMeterBus](https://github.com/ganehag/pyMeterBus) | `mbus` | in use with four MULTICAL 303 |
 | mbus simulator | M-Bus meters behind a TCP port | a telegram from the tests of [wmbusmeters](https://github.com/wmbusmeters/wmbusmeters) | `mbus-sim` | – |
 | [senec](modules/senec/) | SENEC.Home battery storage over its local API (`lala.cgi`) | the API as described by [ha-senec-v3](https://github.com/marq24/ha-senec-v3) | `senec` | in use with a SENEC.Home V3 hybrid duo |
+| [tuya](modules/tuya/) | Tuya devices through the Smart Life cloud (battery WiFi temperature and humidity sensors) | [tuya-device-sharing-sdk](https://github.com/tuya/tuya-device-sharing-sdk), the SDK of the Home Assistant integration | `tuya` | connected to a WiFi T&H sensor; first values pending |
 
 Every module's README has the same sections: prerequisites, configuration,
 devices and metrics, values, behaviour, commissioning.
@@ -114,7 +116,7 @@ general ones:
 
 | Variable | Meaning |
 |---|---|
-| `COMPOSE_PROFILES` | what runs: `db`, `open3e`, `open3e-sim`, `vicare`, `mbus`, `mbus-sim`, `senec`, `tools` |
+| `COMPOSE_PROFILES` | what runs: `db`, `open3e`, `open3e-sim`, `vicare`, `mbus`, `mbus-sim`, `senec`, `tuya`, `tools` |
 | `BIND_ADDRESS` | `127.0.0.1` (default) = local only, `0.0.0.0` = reachable from the LAN |
 | `MQTT_TOPIC_PREFIX` | top-level topic segment of all modules |
 | `INGEST_DATABASE_URL` | a database on another host (then drop the `db` profile) |
@@ -130,8 +132,8 @@ the first time:
 | `modules/<name>/devices.sql` | the module's device type, and its devices where their keys are fixed (open3e simulator, senec) |
 | `modules/<name>/metrics.de.sql` | metric definitions: name, unit, category and type for each key the module publishes |
 
-Where the device keys depend on the installation (vicare, mbus, a scanned
-open3e system), the module's README gives the rows to insert. A key without
+Where the device keys depend on the installation (vicare, mbus, tuya, a
+scanned open3e system), the module's README gives the rows to insert. A key without
 a definition is stored as a text-typed stub until it is curated; the
 dashboard "home-historian - Stubs" lists these. "home-historian - Metrics"
 lists every metric, charts a selection, and edits the name, unit, category

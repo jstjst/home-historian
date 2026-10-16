@@ -24,6 +24,7 @@ does the analysis. The stack reads and never controls.
 | `mbus` | module: reads wired M-Bus meters (Kamstrup heat meters) over a serial port | `mbus` |
 | `mbus-sim` | simulates M-Bus meters behind a TCP port (`socket://mbus-sim:2400`) | `mbus-sim` |
 | `senec` | module: reads a SENEC.Home battery storage over its local API (`lala.cgi`) | `senec` |
+| `tuya` | module: listens to values the Smart Life cloud pushes for Tuya devices (battery T&H sensors) | `tuya` |
 | `mqtt-explorer`, `pgadmin` | tools | `tools` |
 
 `COMPOSE_PROFILES` in `.env` decides what runs.
@@ -89,7 +90,7 @@ does the analysis. The stack reads and never controls.
   `INSERT INTO metrics`, nothing else). The schema creates no device types,
   devices or metrics.
 - Every module has its own Compose profile and variable prefix (`OPEN3E_`,
-  `VICARE_`, `MBUS_`, `SENEC_`), and a README with the same sections:
+  `VICARE_`, `MBUS_`, `SENEC_`, `TUYA_`), and a README with the same sections:
   prerequisites, configuration, devices and metrics, values, behaviour,
   commissioning.
 
@@ -278,3 +279,22 @@ does the analysis. The stack reads and never controls.
 - A SENEC redirects HTTP to HTTPS with a certificate that cannot be verified
   (issued for `senecGuiSelf` by SENEC's own root), and the redirect turns the
   POST into a GET that answers 404.
+
+### tuya
+
+- tuya-device-sharing-sdk has no app of its own: it needs a client id and
+  schema Tuya issued for one, and logs in through endpoints made for Home
+  Assistant. Only HA's values are known to work; they stay out of tracked
+  files (`TUYA_CLIENT_ID`, `TUYA_SCHEMA` in `.env`).
+- Battery WiFi sensors sleep and only report to the cloud; local polling
+  (tinytuya) cannot reach them.
+- Tuya sends integers with a per-product scale (`va_humidity` scale 0 or 1
+  for the same code); the module applies it from the device's specification.
+- Pushed values carry their time (`t`, ms); the status loaded at startup has
+  none and is not published. Values pushed while the module is away are lost.
+- The SDK subscribes only to devices with `set_up` true; the WiFi T&H sensor
+  has it false and got no pushes until the module set it (checked).
+- A push names data point 2 `humidity_value` in `status_code`, but the SDK
+  takes the code from `statusFormat`: it arrives as `va_humidity` (checked).
+- The SDK (0.2.15) imports `cryptography` without declaring it, and its
+  logger brings its own handler (lines are logged twice unless removed).

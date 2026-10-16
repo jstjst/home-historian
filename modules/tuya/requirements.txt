@@ -1,0 +1,10 @@
+paho-mqtt==2.1.0
+pydantic-settings==2.14.2
+# Tuya's SDK for the Smart Life cloud, the one the Home Assistant integration
+# uses. Pulls in requests.
+tuya-device-sharing-sdk==0.2.15
+# Imported by the SDK (AES-GCM of its requests) but not declared by it.
+cryptography==50.0.2
+# QR code of the login, printed in the terminal (tuya_login.py). No
+# dependencies of its own.
+segno==1.6.6

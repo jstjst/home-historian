@@ -3,7 +3,7 @@
 # Core (always running):   mosquitto -> ingest
 # Storage + dashboards:    timescaledb, grafana          profile "db"
 # Modules (data sources):  open3e, open3e-sim, vicare,   one profile each
-#                          mbus, mbus-sim, senec
+#                          mbus, mbus-sim, senec, tuya
 # Tools:                   mqtt-explorer, pgadmin        profile "tools"
 #
 # COMPOSE_PROFILES in .env decides what runs (template: .env.example), e.g.
@@ -103,6 +103,8 @@ services:
       - ./modules/senec/metrics.de.sql:/docker-entrypoint-initdb.d/31_senec_metrics.sql:ro
       - ./modules/vicare/devices.sql:/docker-entrypoint-initdb.d/40_vicare_devices.sql:ro
       - ./modules/vicare/metrics.de.sql:/docker-entrypoint-initdb.d/41_vicare_metrics.sql:ro
+      - ./modules/tuya/devices.sql:/docker-entrypoint-initdb.d/50_tuya_devices.sql:ro
+      - ./modules/tuya/metrics.de.sql:/docker-entrypoint-initdb.d/51_tuya_metrics.sql:ro
       - ./db/initdb/90_grafana_role.sh:/docker-entrypoint-initdb.d/90_grafana_role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-historian} -d ${POSTGRES_DB:-historian}"]
@@ -314,6 +316,38 @@ services:
     restart: unless-stopped
     logging: *logging
 
+  # tuya: listens to the values the Smart Life cloud pushes for Tuya devices
+  #   (battery sensors report only to the cloud). Log in once, interactively:
+  #     docker compose run --rm tuya python tuya_login.py
+  tuya:
+    build: ./modules/tuya
+    profiles: ["tuya"]
+    # The heartbeat is touched every 30 s; keep that off the disk.
+    tmpfs:
+      - /run/tuya:uid=1000,gid=1000
+    environment:
+      # The app the login presents itself as (modules/tuya/README.md).
+      TUYA_CLIENT_ID: ${TUYA_CLIENT_ID:-}
+      TUYA_SCHEMA: ${TUYA_SCHEMA:-}
+      # Device ids to publish, comma separated; empty = every device of the
+      # account. One device "tuya/<device id>" each.
+      TUYA_DEVICES: ${TUYA_DEVICES:-}
+      # Login and tokens. MUST be on the volume: inside the image it would be
+      # gone after every recreation -> new login with the app.
+      TUYA_TOKEN_FILE: /data/token.json
+      TUYA_HEARTBEAT_FILE: /run/tuya/heartbeat
+      TUYA_MQTT_HOST: mosquitto
+      TUYA_MQTT_USERNAME: ${MQTT_USERNAME:-}
+      TUYA_MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      TUYA_MQTT_TOPIC_PREFIX: ${MQTT_TOPIC_PREFIX:-historian}/tuya
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - tuya-data:/data
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+    logging: *logging
+
   # ===================================================================
   # Tools (profile "tools") - neither has a login of its own, which is why
   # they are only reachable through BIND_ADDRESS (default 127.0.0.1).
@@ -351,3 +385,4 @@ volumes:
   grafana_data:
   mosquitto_data:
   vicare-token:
+  tuya-data:

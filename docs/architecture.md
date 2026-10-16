@@ -80,8 +80,10 @@ Costs:
   [db/backfill_value_types.sql](../db/backfill_value_types.sql).
 
 A module still decodes the source's encoding: the senec module turns
-`fl_4404AEB9` into a number, and the mbus module scales two Kamstrup
-registers whose telegram carries no scale. Neither assigns a meaning.
+`fl_4404AEB9` into a number, the mbus module scales two Kamstrup
+registers whose telegram carries no scale, and the tuya module applies the
+scale from the device's specification, which differs between products for
+the same code. None of them assigns a meaning.
 
 ### The broker stamps the time, not the ingester
 
