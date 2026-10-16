@@ -224,7 +224,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 300
+                "value": 504
               }
             ]
           },
@@ -236,7 +236,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 230
+                "value": 298
               }
             ]
           },
@@ -698,7 +698,7 @@
       "description": "Definition and note of one metric. Kind: measured (sensor, meter), setting (configured by a person or the installer), state (determined by the device, such as the current room setpoint). Save writes display_name, display_subname, unit, category, kind and disabled to metrics, and the note to metric_notes; an empty note deletes it. With an empty name the definition stays as it is and only the note is saved. value_type and aggregation are not edited here: a changed type needs db/backfill_value_types.sql. Refreshing the dashboard reloads the stored values and discards what is not saved. The panel title and the Metric selector show a changed name after the page is reloaded. Needs the plugin Business Forms (volkovlabs-form-panel).",
       "gridPos": {
         "h": 12,
-        "w": 8,
+        "w": 24,
         "x": 0,
         "y": 25
       },
