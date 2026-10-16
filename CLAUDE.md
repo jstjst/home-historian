@@ -140,8 +140,8 @@ does the analysis. The stack reads and never controls.
 - **Grafana reads as the role `grafana` (`SELECT` only)**, never as the
   owner: Grafana passes SQL to the database unchecked. It may write what the
   dashboard "home-historian - Metrics" edits: the table `metric_notes`, and
-  the columns `display_name`, `display_subname`, `unit`, `category` and
-  `disabled` of `metrics`. Do not grant it more without asking.
+  the columns `display_name`, `display_subname`, `unit`, `category`,
+  `kind` and `disabled` of `metrics`. Do not grant it more without asking.
 - **Definitions edited in Grafana exist in the database only.** A module's
   `metrics.de.sql` overwrites stubs and leaves a named metric alone, so it
   does not undo an edit and does not contain it either.

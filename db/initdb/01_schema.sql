@@ -53,6 +53,13 @@ CREATE TYPE category AS ENUM (
 );
 
 CREATE TYPE agg_kind AS ENUM ('gauge', 'counter');
+
+-- Where a value comes from, independent of the part of the installation.
+CREATE TYPE metric_kind AS ENUM (
+    'measured',     -- read by a sensor or meter (flow temperature, power, energy)
+    'setting',      -- configured by a person or the installer (heating curve, DHW setpoint, schedule)
+    'state'         -- determined by the device (current room setpoint, operating mode, hours run)
+);
 CREATE TYPE val_kind AS ENUM ('num', 'str', 'bool');
 
 
@@ -97,6 +104,7 @@ CREATE TABLE metrics (
     category      category,                      -- NULL for shared meter registers
     value_type    val_kind     NOT NULL DEFAULT 'num',
     aggregation   agg_kind     NOT NULL DEFAULT 'gauge',  -- counter for cumulative meter readings
+    kind          metric_kind,                   -- measured | setting | state; NULL until curated
     disabled      boolean      NOT NULL DEFAULT false,    -- the installation does not have or use this quantity
     UNIQUE (type, native_key)                    -- natural key for the ingester's lookup
 );
@@ -105,6 +113,7 @@ COMMENT ON COLUMN metrics.native_key      IS 'Complete lookup key per type (raw 
 COMMENT ON COLUMN metrics.display_subname IS 'Unified role of the value (actual|min|max|...) for analysis across devices. NULL if none.';
 COMMENT ON COLUMN metrics.category         IS 'Part of the installation when the metric determines it. NULL for shared registers.';
 COMMENT ON COLUMN metrics.aggregation      IS 'gauge = instantaneous value, counter = cumulative meter reading (take the difference!).';
+COMMENT ON COLUMN metrics.kind             IS 'Where the value comes from: measured (sensor, meter), setting (configured), state (determined by the device). NULL until curated.';
 COMMENT ON COLUMN metrics.disabled         IS 'Marks a quantity this installation does not have or use. A marker only: the ingester does not evaluate it.';
 
 
@@ -209,7 +218,8 @@ SELECT
     met.aggregation,
     m.value_num,
     m.value_str,
-    m.value_bool
+    m.value_bool,
+    met.kind
 FROM measurements m
 JOIN devices d        ON d.device_id = m.device_id
 LEFT JOIN metrics met ON met.metric_id = m.metric_id;

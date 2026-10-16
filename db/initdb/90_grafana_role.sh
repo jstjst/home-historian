@@ -4,7 +4,7 @@
 #   Grafana passes SQL to the database unchecked. With the owner role every
 #   Grafana user could change or delete measurements, so Grafana reads
 #   through a role of its own that may only SELECT. The exceptions are what
-#   the dashboard "home-historian - Metrics" writes: metric_notes, and five
+#   the dashboard "home-historian - Metrics" writes: metric_notes, and six
 #   columns of a metric's definition. Measurements, devices, and a metric's
 #   keys and types stay read-only.
 #
@@ -27,6 +27,6 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana;
 -- the notes, and the definition of a metric without value_type and
 -- aggregation (a changed type needs db/backfill_value_types.sql).
 GRANT INSERT, UPDATE, DELETE ON metric_notes TO grafana;
-GRANT UPDATE (display_name, display_subname, unit, category, disabled)
+GRANT UPDATE (display_name, display_subname, unit, category, kind, disabled)
     ON metrics TO grafana;
 SQL

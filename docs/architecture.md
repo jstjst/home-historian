@@ -221,7 +221,7 @@ properties:
 - Typed columns. Devices deliver numbers, texts and booleans, and each has a
   column of its type.
 - PostgreSQL's roles and its data source in Grafana: Grafana reads through a
-  role that may only `SELECT`, and write the notes and five columns of a
+  role that may only `SELECT`, and write the notes and six columns of a
   metric's definition.
 
 ### One row per value, one column per value type
@@ -276,7 +276,7 @@ link to that database may fail without loss.
 The broker and the tools have no authentication, so every port is bound
 locally by default. Grafana reads through a database role that may only
 `SELECT`, because it passes SQL on unchecked; it may write the notes on
-metrics and five columns of a metric's definition, and nothing else. The
+metrics and six columns of a metric's definition, and nothing else. The
 open3e module starts without
 the command channel through which open3e could write data points; the stack
 does not need it.
@@ -290,7 +290,7 @@ type ─────────────────► type                
 device_key              native_key                  value_num
 name                    display_name                value_str
 category                display_subname             value_bool
-                        unit, category
+                        unit, category, kind
                         value_type, aggregation
                         metric_id  ◄─────────────── metric_id
 device_id  ◄─────────────────────────────────────── device_id
@@ -417,6 +417,30 @@ Whether a value is instantaneous (`gauge`) or a running meter reading
 difference in the other. That is a property of how the value behaves over
 time, not of its place in the installation, so it has a field of its own.
 
+### `kind`: measured, setting or state
+
+`kind` says where a value comes from:
+
+- `measured`: read by a sensor or meter (flow temperature, power, energy).
+- `setting`: configured by a person or the installer (heating curve, DHW
+  setpoint, time schedule).
+- `state`: determined by the device (the room setpoint currently in effect,
+  operating mode, hours run).
+
+It is a different question from `display_subname`. A subname "setpoint" can
+be a `setting` (the DHW temperature someone entered) or a `state` (the flow
+setpoint the controller derived from the heating curve). It is also
+independent of the category: a heating circuit has measured values,
+settings and states.
+
+`kind` is NULL until somebody sets it, in the dashboard "home-historian -
+Metrics"; stubs are created without it, and the modules' `metrics.de.sql`
+leave it alone. The view `v_measurements` carries it as its last column.
+
+The category `config` predates `kind` and mixes the two questions: it holds
+settings, but also identification data and status lists, without their
+part of the installation.
+
 ### `value_type` is a hint, not a constraint
 
 `value_type` tells the ingester which column a value belongs in. If a single
@@ -456,9 +480,9 @@ its definition and its latest value, and charts the metrics selected there in
 one graph, one axis per unit. Below the graph each selected metric has a form
 with its definition and a note.
 
-The form writes `display_name`, `display_subname`, `unit`, `category` and
-`disabled` of the metric. An empty subname or unit and the category `none`
-are stored as NULL. With an empty name the definition stays as it is and only
+The form writes `display_name`, `display_subname`, `unit`, `category`,
+`kind` and `disabled` of the metric. An empty subname or unit and the
+category or kind `none` are stored as NULL. With an empty name the definition stays as it is and only
 the note is saved; a form that failed to load its values therefore does not
 erase a definition. Giving a stub a name ends its being a stub, and writing
 the `native_key` back into the name makes it one again.
@@ -471,7 +495,7 @@ the `native_key` back into the name makes it one again.
   stubs and leaves a named metric alone, so loading it again does not undo an
   edit, and the file does not contain the edit until it is written there by
   hand. A database built from the files does not have it.
-- `category` and the names are read at query time (`v_measurements`), so an
+- `category`, `kind` and the names are read at query time (`v_measurements`), so an
   edit applies to the values already stored as well.
 
 The note is for what the form cannot settle: what the value turned out to be,
@@ -487,7 +511,7 @@ ORDER BY 1, 2;
 ```
 
 - The role `grafana` has `INSERT`, `UPDATE` and `DELETE` on `metric_notes`,
-  `UPDATE` on the five columns above, and `SELECT` on everything else. Every
+  `UPDATE` on the six columns above, and `SELECT` on everything else. Every
   Grafana user who can open the dashboard can change these definitions and
   notes. Measurements, devices, and a metric's keys and types stay
   read-only.
@@ -498,8 +522,9 @@ ORDER BY 1, 2;
   range: counting the values of every metric is a scan of the whole range.
   The stubs dashboard does count, for the stubs only.
 - A database created before the table existed gets it with
-  [db/add_metric_notes.sql](../db/add_metric_notes.sql), and the right to
-  edit definitions with
+  [db/add_metric_notes.sql](../db/add_metric_notes.sql), the column
+  `kind` with [db/add_metric_kind.sql](../db/add_metric_kind.sql), and the
+  right to edit definitions with
   [db/grant_metric_edit.sql](../db/grant_metric_edit.sql).
 
 ### Devices are resolved by longest prefix
